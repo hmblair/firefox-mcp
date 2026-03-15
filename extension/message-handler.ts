@@ -377,41 +377,58 @@ export class MessageHandler {
           return null;
         }
 
+        function uniqueSelector(el) {
+          if (el.id) return '#' + CSS.escape(el.id);
+
+          // Build a base selector for this element
+          let base = el.tagName.toLowerCase();
+          if (el.name && el.tagName !== 'A') {
+            base = el.tagName.toLowerCase() + '[name="' + CSS.escape(el.name) + '"]';
+          } else {
+            const type = el.getAttribute('type');
+            if (type) base += '[type="' + type + '"]';
+            if (el.className && typeof el.className === 'string') {
+              const cls = el.className.trim().split(/\\s+/).slice(0, 2).map(c => '.' + CSS.escape(c)).join('');
+              base += cls;
+            }
+          }
+
+          // If base is unique, use it
+          if (document.querySelectorAll(base).length === 1) return base;
+
+          // Try adding value attribute
+          if (el.value && el.tagName === 'INPUT') {
+            const withVal = base + '[value="' + CSS.escape(el.value) + '"]';
+            if (document.querySelectorAll(withVal).length === 1) return withVal;
+          }
+
+          // Walk up ancestors to build a unique nth-child path
+          const parts = [];
+          let node = el;
+          for (let i = 0; i < 8; i++) {
+            const parent = node.parentElement;
+            if (!parent || parent === document.documentElement) break;
+            const idx = Array.from(parent.children).indexOf(node) + 1;
+            parts.unshift(':nth-child(' + idx + ')');
+            if (parent.id) {
+              parts.unshift('#' + CSS.escape(parent.id));
+              const path = parts.join(' > ');
+              if (document.querySelectorAll(path).length === 1) return path;
+              break;
+            }
+            const path = parts.join(' > ');
+            if (document.querySelectorAll(path).length === 1) return path;
+            node = parent;
+          }
+          return parts.join(' > ');
+        }
+
         for (const el of els) {
           const rect = el.getBoundingClientRect();
           if (rect.width === 0 && rect.height === 0) continue;
           if (el.offsetParent === null && el.tagName !== 'BODY') continue;
 
-          let selector = '';
-          if (el.id) {
-            selector = '#' + CSS.escape(el.id);
-          } else if (el.name && el.tagName !== 'A') {
-            selector = el.tagName.toLowerCase() + '[name="' + el.name + '"]';
-          } else {
-            const tag = el.tagName.toLowerCase();
-            const type = el.getAttribute('type');
-            let s = tag;
-            if (type) s += '[type="' + type + '"]';
-            if (el.className && typeof el.className === 'string') {
-              const cls = el.className.trim().split(/\\s+/).slice(0, 2).map(c => '.' + CSS.escape(c)).join('');
-              s += cls;
-            }
-            selector = s;
-          }
-
-          if (seen.has(selector)) {
-            if (el.value) {
-              selector += '[value="' + CSS.escape(el.value) + '"]';
-            }
-            if (seen.has(selector)) {
-              const parent = el.parentElement;
-              if (parent) {
-                const idx = Array.from(parent.children).indexOf(el) + 1;
-                const pSel = parent.id ? '#' + CSS.escape(parent.id) : parent.tagName.toLowerCase();
-                selector = pSel + ' > :nth-child(' + idx + ')';
-              }
-            }
-          }
+          const selector = uniqueSelector(el);
           seen.add(selector);
 
           const tag = el.tagName.toLowerCase();

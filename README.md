@@ -10,18 +10,22 @@ MCP Client (Claude, etc.) <--stdio--> MCP Server <--WebSocket--> Firefox Extensi
 
 | Tool | Description |
 |------|-------------|
-| `openTab` | Open a URL in a new browser tab (waits for page load) |
-| `closeTabs` | Close browser tabs by their IDs |
-| `listTabs` | List all open browser tabs |
-| `getTabContent` | Read a webpage's text content and links, optionally scoped to a CSS selector with a configurable max length |
-| `searchTabContent` | Search for text in a webpage and return matching passages with context |
-| `listInteractiveElements` | List interactive elements (buttons, inputs, links) with CSS selectors |
-| `clickElement` | Click an element by CSS selector (waits for navigation) |
-| `typeIntoField` | Type text into an input field, optionally submitting the form |
-| `pressKey` | Simulate a key press (Enter, Escape, Tab, ArrowDown, etc.) |
-| `selectOption` | Select an option in a `<select>` dropdown by value |
+| **Navigation** | |
+| `openLink` | Open a URL in the browser (navigates active tab by default, or use `newTab: true`) |
+| `closeTabs` | Close browser tabs by their IDs (reports which tabs succeeded/failed) |
+| `listTabs` | List all open browser tabs, optionally filtered by URL or title |
 | `getTabInfo` | Get a tab's URL, title, and loading status without reading content |
-| `fillForm` | Fill multiple form fields in one call, optionally clicking a submit button |
+| **Reading** | |
+| `getTabContent` | Read a webpage's text content and links, optionally scoped to a CSS selector |
+| `searchTabContent` | Search for text in a webpage and return matching passages with context |
+| `listInteractiveElements` | List interactive elements with semantic types, labels, hrefs, and CSS selectors |
+| **Interaction** | |
+| `clickElement` | Click an element by CSS selector (reports whether navigation occurred) |
+| `typeIntoField` | Type text into an input field, optionally submitting the form |
+| `fillForm` | Fill multiple form fields in one call, with support for text, checkbox, radio, and dropdowns |
+| `selectOption` | Select an option in a `<select>` dropdown by value |
+| `pressKey` | Simulate a key press (Enter, Escape, Tab, ArrowDown, etc.) |
+| **Synchronization** | |
 | `waitForSelector` | Wait for a CSS selector to appear on the page (for SPAs/dynamic content) |
 
 Open tab contents are also available as MCP resources.
