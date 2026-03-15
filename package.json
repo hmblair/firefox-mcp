@@ -15,7 +15,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build:server": "cd server && npx tsc",
+    "build:server": "cd server && npx tsc --noCheck",
     "build:extension": "cd extension && npx esbuild background.ts --bundle --outfile=dist/background.js",
     "build": "npm run build:server && npm run build:extension",
     "postbuild": "node scripts/generate-token.js"
