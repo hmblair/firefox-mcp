@@ -17,7 +17,7 @@ MCP Client (Claude, etc.) <--stdio--> MCP Server <--WebSocket--> Firefox Extensi
 | `getTabContent` | Read a webpage's text content and links, optionally scoped to a CSS selector with a configurable max length |
 | `getPageOutline` | Get the heading structure (h1-h6) of a webpage with CSS selectors for each section |
 | `reorderTabs` | Reorder open browser tabs |
-| `findInTab` | Find and highlight text in a browser tab |
+| `searchTabContent` | Search for text in a webpage and return matching passages with context |
 | `listInteractiveElements` | List interactive elements (buttons, inputs, links) with CSS selectors |
 | `clickElement` | Click an element by CSS selector (waits for navigation) |
 | `typeIntoField` | Type text into an input field, optionally submitting the form |

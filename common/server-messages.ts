@@ -40,10 +40,11 @@ export interface ReorderTabsServerMessage extends ServerMessageBase {
   tabOrder: number[];
 }
 
-export interface FindHighlightServerMessage extends ServerMessageBase {
-  cmd: "find-highlight";
+export interface SearchTabContentServerMessage extends ServerMessageBase {
+  cmd: "search-tab-content";
   tabId: number;
-  queryPhrase: string;
+  query: string;
+  contextChars?: number;
 }
 
 export interface GetInteractiveElementsServerMessage extends ServerMessageBase {
@@ -88,7 +89,7 @@ export type ServerMessage =
   | GetTabContentServerMessage
   | GetPageOutlineServerMessage
   | ReorderTabsServerMessage
-  | FindHighlightServerMessage
+  | SearchTabContentServerMessage
   | GetInteractiveElementsServerMessage
   | ClickElementServerMessage
   | TypeIntoFieldServerMessage

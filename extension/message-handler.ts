@@ -72,11 +72,12 @@ export class MessageHandler {
       case "reorder-tabs":
         await this.reorderTabs(req.correlationId, req.tabOrder);
         break;
-      case "find-highlight":
-        await this.findAndHighlightText(
+      case "search-tab-content":
+        await this.searchTabContent(
           req.correlationId,
           req.tabId,
-          req.queryPhrase
+          req.query,
+          req.contextChars
         );
         break;
       case "get-interactive-elements":
@@ -284,25 +285,39 @@ export class MessageHandler {
     });
   }
 
-  private async findAndHighlightText(
+  private async searchTabContent(
     correlationId: string,
     tabId: number,
-    queryPhrase: string
+    query: string,
+    contextChars?: number
   ): Promise<void> {
-    const findResults = await browser.find.find(queryPhrase, {
-      tabId,
-      caseSensitive: false,
+    const safeQuery = JSON.stringify(query);
+    const ctx = contextChars ?? 200;
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const query = ${safeQuery}.toLowerCase();
+        const ctx = ${ctx};
+        const text = document.body.innerText;
+        const lower = text.toLowerCase();
+        const matches = [];
+        let pos = 0;
+        while (matches.length < 50) {
+          const idx = lower.indexOf(query, pos);
+          if (idx === -1) break;
+          const start = Math.max(0, idx - ctx);
+          const end = Math.min(text.length, idx + query.length + ctx);
+          matches.push({ context: text.substring(start, end), index: idx });
+          pos = idx + query.length;
+        }
+        return matches;
+      })();
+    `,
     });
-
-    if (findResults.count > 0) {
-      await browser.tabs.update(tabId, { active: true });
-      browser.find.highlightResults({ tabId });
-    }
-
     await this.client.sendResourceToServer({
-      resource: "find-highlight-result",
+      resource: "search-tab-content-result",
       correlationId,
-      noOfResults: findResults.count,
+      matches: results[0] || [],
     });
   }
 

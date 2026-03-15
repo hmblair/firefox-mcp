@@ -245,17 +245,18 @@ export class BrowserAPI {
     return message.headings;
   }
 
-  async findHighlight(tabId: number, queryPhrase: string): Promise<number> {
+  async searchTabContent(tabId: number, query: string, contextChars?: number) {
     const correlationId = this.sendMessageToExtension({
-      cmd: "find-highlight",
+      cmd: "search-tab-content",
       tabId,
-      queryPhrase,
+      query,
+      contextChars,
     });
     const message = await this.waitForResponse(
       correlationId,
-      "find-highlight-result"
+      "search-tab-content-result"
     );
-    return message.noOfResults;
+    return message.matches;
   }
 
   private createSignature(payload: string): string {

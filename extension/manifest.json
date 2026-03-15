@@ -7,8 +7,7 @@
     "tabs",
     "activeTab",
     "*://*/*",
-    "history",
-    "find"
+    "history"
   ],
   "browser_specific_settings": {
     "gecko": {

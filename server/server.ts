@@ -56,16 +56,23 @@ mcpServer.tool(
   async () => {
     const openTabs = await browserApi.getTabList();
     return {
-      content: openTabs.map((tab) => {
-        let lastAccessed = "unknown";
-        if (tab.lastAccessed) {
-          lastAccessed = dayjs(tab.lastAccessed).fromNow();
-        }
-        return {
+      content: [
+        {
           type: "text",
-          text: `tab id=${tab.id}, url=${tab.url}, title=${tab.title}, last accessed=${lastAccessed}`,
-        };
-      }),
+          text: JSON.stringify(
+            openTabs.map((tab) => ({
+              id: tab.id,
+              url: tab.url,
+              title: tab.title,
+              lastAccessed: tab.lastAccessed
+                ? dayjs(tab.lastAccessed).fromNow()
+                : "unknown",
+            })),
+            null,
+            2
+          ),
+        },
+      ],
     };
   }
 );
@@ -81,25 +88,30 @@ mcpServer.tool(
   },
   async ({ query }) => {
     const browserHistory = await browserApi.getBrowserRecentHistory(query);
-    if (browserHistory.length > 0) {
-      return {
-        content: browserHistory.map((item) => {
-          let lastVisited = "unknown";
-          if (item.lastVisitTime) {
-            lastVisited = dayjs(item.lastVisitTime).fromNow();
-          }
-          return {
-            type: "text",
-            text: `url=${item.url}, title="${item.title}", lastVisitTime=${lastVisited}`,
-          };
-        }),
-      };
-    } else {
+    if (browserHistory.length === 0) {
       const hint = query ? " Try without a query." : "";
       return {
         content: [{ type: "text", text: `No history found.${hint}` }],
       };
     }
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            browserHistory.map((item) => ({
+              url: item.url,
+              title: item.title,
+              lastVisited: item.lastVisitTime
+                ? dayjs(item.lastVisitTime).fromNow()
+                : "unknown",
+            })),
+            null,
+            2
+          ),
+        },
+      ],
+    };
   }
 );
 
@@ -179,10 +191,12 @@ mcpServer.tool(
       };
     }
     return {
-      content: headings.map((h) => ({
-        type: "text",
-        text: `${"  ".repeat(h.level - 1)}h${h.level}: ${h.text}  [${h.selector}]`,
-      })),
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(headings, null, 2),
+        },
+      ],
     };
   }
 );
@@ -206,19 +220,34 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "findInTab",
-  "Find and highlight text in a browser tab",
+  "searchTabContent",
+  "Search for text in a webpage and return matching passages with surrounding context",
   {
     tabId: z.number().describe("The tab ID to search in"),
-    queryPhrase: z.string().describe("The text to find and highlight"),
+    query: z.string().describe("The text to search for (case-insensitive)"),
+    contextChars: z
+      .number()
+      .optional()
+      .describe(
+        "Number of characters of context to include before and after each match (default: 200)"
+      ),
   },
-  async ({ tabId, queryPhrase }) => {
-    const noOfResults = await browserApi.findHighlight(tabId, queryPhrase);
+  async ({ tabId, query, contextChars }) => {
+    const matches = await browserApi.searchTabContent(
+      tabId,
+      query,
+      contextChars
+    );
+    if (matches.length === 0) {
+      return {
+        content: [{ type: "text", text: `No matches found for "${query}"` }],
+      };
+    }
     return {
       content: [
         {
           type: "text",
-          text: `Found and highlighted ${noOfResults} result(s)`,
+          text: JSON.stringify(matches, null, 2),
         },
       ],
     };
@@ -239,15 +268,12 @@ mcpServer.tool(
       };
     }
     return {
-      content: elements.map((el) => {
-        const parts = [`selector="${el.selector}"`, `tag=${el.tag}`];
-        if (el.type) parts.push(`type=${el.type}`);
-        if (el.label) parts.push(`label="${el.label}"`);
-        if (el.placeholder) parts.push(`placeholder="${el.placeholder}"`);
-        if (el.value) parts.push(`value="${el.value}"`);
-        if (!el.enabled) parts.push("disabled");
-        return { type: "text", text: parts.join(", ") };
-      }),
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(elements, null, 2),
+        },
+      ],
     };
   }
 );
