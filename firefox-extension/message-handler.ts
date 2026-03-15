@@ -35,6 +35,9 @@ export class MessageHandler {
           req.queryPhrase
         );
         break;
+      case "get-interactive-elements":
+        await this.getInteractiveElements(req.correlationId, req.tabId);
+        break;
       case "click-element":
         await this.clickElement(req.correlationId, req.tabId, req.selector);
         break;
@@ -195,6 +198,79 @@ export class MessageHandler {
       resource: "find-highlight-result",
       correlationId,
       noOfResults: findResults.count,
+    });
+  }
+
+  private async getInteractiveElements(
+    correlationId: string,
+    tabId: number
+  ): Promise<void> {
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const selectors = 'a[href], button, input, textarea, select, [role="button"], [onclick], [tabindex]';
+        const els = document.querySelectorAll(selectors);
+        const seen = new Set();
+        const elements = [];
+
+        for (const el of els) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          if (el.offsetParent === null && el.tagName !== 'BODY') continue;
+
+          let selector = '';
+          if (el.id) {
+            selector = '#' + CSS.escape(el.id);
+          } else if (el.name && el.tagName !== 'A') {
+            selector = el.tagName.toLowerCase() + '[name="' + el.name + '"]';
+          } else {
+            const tag = el.tagName.toLowerCase();
+            const type = el.getAttribute('type');
+            const label = el.getAttribute('aria-label') || el.textContent?.trim().substring(0, 30);
+            let s = tag;
+            if (type) s += '[type="' + type + '"]';
+            if (el.className && typeof el.className === 'string') {
+              const cls = el.className.trim().split(/\\s+/).slice(0, 2).map(c => '.' + CSS.escape(c)).join('');
+              s += cls;
+            }
+            selector = s;
+          }
+
+          if (seen.has(selector)) {
+            const all = document.querySelectorAll(selector);
+            const idx = Array.from(all).indexOf(el);
+            selector = ':nth-match(' + selector + ', ' + idx + ')';
+          }
+          seen.add(selector);
+
+          const tag = el.tagName.toLowerCase();
+          const entry = {
+            selector: selector,
+            tag: tag,
+            enabled: !el.disabled,
+          };
+          if (el.type) entry.type = el.type;
+
+          const label = el.getAttribute('aria-label')
+            || (el.labels && el.labels[0]?.textContent?.trim())
+            || el.getAttribute('title')
+            || (tag === 'a' || tag === 'button' ? el.textContent?.trim().substring(0, 50) : null);
+          if (label) entry.label = label;
+          if (el.placeholder) entry.placeholder = el.placeholder;
+          if (el.value && tag !== 'input' || (tag === 'input' && el.type !== 'password')) {
+            if (el.value) entry.value = el.value.substring(0, 100);
+          }
+
+          elements.push(entry);
+        }
+        return elements;
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "interactive-elements",
+      correlationId,
+      elements: results[0] || [],
     });
   }
 

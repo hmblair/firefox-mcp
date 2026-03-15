@@ -38,6 +38,11 @@ export interface FindHighlightServerMessage extends ServerMessageBase {
   queryPhrase: string;
 }
 
+export interface GetInteractiveElementsServerMessage extends ServerMessageBase {
+  cmd: "get-interactive-elements";
+  tabId: number;
+}
+
 export interface ClickElementServerMessage extends ServerMessageBase {
   cmd: "click-element";
   tabId: number;
@@ -60,6 +65,7 @@ export type ServerMessage =
   | GetTabContentServerMessage
   | ReorderTabsServerMessage
   | FindHighlightServerMessage
+  | GetInteractiveElementsServerMessage
   | ClickElementServerMessage
   | TypeIntoFieldServerMessage;
 

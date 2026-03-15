@@ -147,6 +147,15 @@ export class BrowserAPI {
     return message.tabOrder;
   }
 
+  async getInteractiveElements(tabId: number) {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "get-interactive-elements",
+      tabId,
+    });
+    const message = await this.waitForResponse(correlationId, "interactive-elements");
+    return message.elements;
+  }
+
   async clickElement(tabId: number, selector: string): Promise<boolean> {
     const correlationId = this.sendMessageToExtension({
       cmd: "click-element",
