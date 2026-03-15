@@ -177,6 +177,81 @@ mcpServer.tool(
   }
 );
 
+mcpServer.tool(
+  "get-interactive-elements-in-browser-tab",
+  "Get all interactive elements (buttons, inputs, links, selects, textareas) on a webpage, with their CSS selectors and labels",
+  { tabId: z.number() },
+  async ({ tabId }) => {
+    const elements = await browserApi.getInteractiveElements(tabId);
+    if (elements.length === 0) {
+      return {
+        content: [{ type: "text", text: "No interactive elements found on the page" }],
+      };
+    }
+    return {
+      content: elements.map((el) => {
+        const parts = [`selector="${el.selector}"`, `tag=${el.tag}`];
+        if (el.type) parts.push(`type=${el.type}`);
+        if (el.label) parts.push(`label="${el.label}"`);
+        if (el.placeholder) parts.push(`placeholder="${el.placeholder}"`);
+        if (el.value) parts.push(`value="${el.value}"`);
+        if (!el.enabled) parts.push("disabled");
+        return { type: "text", text: parts.join(", ") };
+      }),
+    };
+  }
+);
+
+mcpServer.tool(
+  "click-element-in-browser-tab",
+  "Click an element on a webpage by CSS selector",
+  { tabId: z.number(), selector: z.string() },
+  async ({ tabId, selector }) => {
+    const success = await browserApi.clickElement(tabId, selector);
+    return {
+      content: [
+        {
+          type: "text",
+          text: success
+            ? `Clicked element matching "${selector}"`
+            : `No element found matching "${selector}"`,
+          isError: !success,
+        },
+      ],
+    };
+  }
+);
+
+mcpServer.tool(
+  "type-into-field-in-browser-tab",
+  "Type text into an input field on a webpage by CSS selector",
+  {
+    tabId: z.number(),
+    selector: z.string(),
+    text: z.string(),
+    clearFirst: z.boolean().default(true),
+  },
+  async ({ tabId, selector, text, clearFirst }) => {
+    const success = await browserApi.typeIntoField(
+      tabId,
+      selector,
+      text,
+      clearFirst
+    );
+    return {
+      content: [
+        {
+          type: "text",
+          text: success
+            ? `Typed text into element matching "${selector}"`
+            : `No element found matching "${selector}"`,
+          isError: !success,
+        },
+      ],
+    };
+  }
+);
+
 mcpServer.resource(
   "open-tab-contents",
   new ResourceTemplate("browser://tab/{tabId}/content", {

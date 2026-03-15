@@ -35,6 +35,21 @@ export class MessageHandler {
           req.queryPhrase
         );
         break;
+      case "get-interactive-elements":
+        await this.getInteractiveElements(req.correlationId, req.tabId);
+        break;
+      case "click-element":
+        await this.clickElement(req.correlationId, req.tabId, req.selector);
+        break;
+      case "type-into-field":
+        await this.typeIntoField(
+          req.correlationId,
+          req.tabId,
+          req.selector,
+          req.text,
+          req.clearFirst ?? true
+        );
+        break;
       default:
         const _exhaustiveCheck: never = req;
         console.error("Invalid message received:", req);
@@ -183,6 +198,136 @@ export class MessageHandler {
       resource: "find-highlight-result",
       correlationId,
       noOfResults: findResults.count,
+    });
+  }
+
+  private async getInteractiveElements(
+    correlationId: string,
+    tabId: number
+  ): Promise<void> {
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const selectors = 'a[href], button, input, textarea, select, [role="button"], [onclick], [tabindex]';
+        const els = document.querySelectorAll(selectors);
+        const seen = new Set();
+        const elements = [];
+
+        for (const el of els) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          if (el.offsetParent === null && el.tagName !== 'BODY') continue;
+
+          let selector = '';
+          if (el.id) {
+            selector = '#' + CSS.escape(el.id);
+          } else if (el.name && el.tagName !== 'A') {
+            selector = el.tagName.toLowerCase() + '[name="' + el.name + '"]';
+          } else {
+            const tag = el.tagName.toLowerCase();
+            const type = el.getAttribute('type');
+            const label = el.getAttribute('aria-label') || el.textContent?.trim().substring(0, 30);
+            let s = tag;
+            if (type) s += '[type="' + type + '"]';
+            if (el.className && typeof el.className === 'string') {
+              const cls = el.className.trim().split(/\\s+/).slice(0, 2).map(c => '.' + CSS.escape(c)).join('');
+              s += cls;
+            }
+            selector = s;
+          }
+
+          if (seen.has(selector)) {
+            const all = document.querySelectorAll(selector);
+            const idx = Array.from(all).indexOf(el);
+            selector = ':nth-match(' + selector + ', ' + idx + ')';
+          }
+          seen.add(selector);
+
+          const tag = el.tagName.toLowerCase();
+          const entry = {
+            selector: selector,
+            tag: tag,
+            enabled: !el.disabled,
+          };
+          if (el.type) entry.type = el.type;
+
+          const label = el.getAttribute('aria-label')
+            || (el.labels && el.labels[0]?.textContent?.trim())
+            || el.getAttribute('title')
+            || (tag === 'a' || tag === 'button' ? el.textContent?.trim().substring(0, 50) : null);
+          if (label) entry.label = label;
+          if (el.placeholder) entry.placeholder = el.placeholder;
+          if (el.value && tag !== 'input' || (tag === 'input' && el.type !== 'password')) {
+            if (el.value) entry.value = el.value.substring(0, 100);
+          }
+
+          elements.push(entry);
+        }
+        return elements;
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "interactive-elements",
+      correlationId,
+      elements: results[0] || [],
+    });
+  }
+
+  private async clickElement(
+    correlationId: string,
+    tabId: number,
+    selector: string
+  ): Promise<void> {
+    const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const el = document.querySelector('${escapedSelector}');
+        if (el) {
+          el.click();
+          return true;
+        }
+        return false;
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "element-clicked",
+      correlationId,
+      success: !!results[0],
+    });
+  }
+
+  private async typeIntoField(
+    correlationId: string,
+    tabId: number,
+    selector: string,
+    text: string,
+    clearFirst: boolean
+  ): Promise<void> {
+    const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const escapedText = text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const el = document.querySelector('${escapedSelector}');
+        if (!el) return false;
+        el.focus();
+        if (${clearFirst}) {
+          el.value = '';
+        }
+        el.value = ${clearFirst ? `'${escapedText}'` : `el.value + '${escapedText}'`};
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "text-typed",
+      correlationId,
+      success: !!results[0],
     });
   }
 }

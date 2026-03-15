@@ -38,6 +38,25 @@ export interface FindHighlightServerMessage extends ServerMessageBase {
   queryPhrase: string;
 }
 
+export interface GetInteractiveElementsServerMessage extends ServerMessageBase {
+  cmd: "get-interactive-elements";
+  tabId: number;
+}
+
+export interface ClickElementServerMessage extends ServerMessageBase {
+  cmd: "click-element";
+  tabId: number;
+  selector: string;
+}
+
+export interface TypeIntoFieldServerMessage extends ServerMessageBase {
+  cmd: "type-into-field";
+  tabId: number;
+  selector: string;
+  text: string;
+  clearFirst?: boolean;
+}
+
 export type ServerMessage =
   | OpenTabServerMessage
   | CloseTabsServerMessage
@@ -45,6 +64,9 @@ export type ServerMessage =
   | GetBrowserRecentHistoryServerMessage
   | GetTabContentServerMessage
   | ReorderTabsServerMessage
-  | FindHighlightServerMessage;
+  | FindHighlightServerMessage
+  | GetInteractiveElementsServerMessage
+  | ClickElementServerMessage
+  | TypeIntoFieldServerMessage;
 
 export type ServerMessageRequest = ServerMessage & { correlationId: string };

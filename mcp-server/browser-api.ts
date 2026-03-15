@@ -147,6 +147,42 @@ export class BrowserAPI {
     return message.tabOrder;
   }
 
+  async getInteractiveElements(tabId: number) {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "get-interactive-elements",
+      tabId,
+    });
+    const message = await this.waitForResponse(correlationId, "interactive-elements");
+    return message.elements;
+  }
+
+  async clickElement(tabId: number, selector: string): Promise<boolean> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "click-element",
+      tabId,
+      selector,
+    });
+    const message = await this.waitForResponse(correlationId, "element-clicked");
+    return message.success;
+  }
+
+  async typeIntoField(
+    tabId: number,
+    selector: string,
+    text: string,
+    clearFirst: boolean
+  ): Promise<boolean> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "type-into-field",
+      tabId,
+      selector,
+      text,
+      clearFirst,
+    });
+    const message = await this.waitForResponse(correlationId, "text-typed");
+    return message.success;
+  }
+
   async findHighlight(tabId: number, queryPhrase: string): Promise<number> {
     const correlationId = this.sendMessageToExtension({
       cmd: "find-highlight",
