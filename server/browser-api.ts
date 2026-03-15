@@ -2,7 +2,6 @@ import WebSocket from "ws";
 import {
   ExtensionMessage,
   BrowserTab,
-  BrowserHistoryItem,
   ServerMessage,
   TabContentExtensionMessage,
   ServerMessageRequest,
@@ -117,12 +116,13 @@ export class BrowserAPI {
     return message.tabId;
   }
 
-  async closeTabs(tabIds: number[]) {
+  async closeTabs(tabIds: number[]): Promise<{ closedTabIds: number[]; failedTabIds: number[] }> {
     const correlationId = this.sendMessageToExtension({
       cmd: "close-tabs",
       tabIds,
     });
-    await this.waitForResponse(correlationId, "tabs-closed");
+    const message = await this.waitForResponse(correlationId, "tabs-closed");
+    return { closedTabIds: message.closedTabIds, failedTabIds: message.failedTabIds };
   }
 
   async getTabList(): Promise<BrowserTab[]> {
@@ -131,17 +131,6 @@ export class BrowserAPI {
     });
     const message = await this.waitForResponse(correlationId, "tabs");
     return message.tabs;
-  }
-
-  async getBrowserRecentHistory(
-    searchQuery?: string
-  ): Promise<BrowserHistoryItem[]> {
-    const correlationId = this.sendMessageToExtension({
-      cmd: "get-browser-recent-history",
-      searchQuery,
-    });
-    const message = await this.waitForResponse(correlationId, "history");
-    return message.historyItems;
   }
 
   async getTabContent(
@@ -160,15 +149,6 @@ export class BrowserAPI {
       maxLength,
     });
     return await this.waitForResponse(correlationId, "tab-content");
-  }
-
-  async reorderTabs(tabOrder: number[]): Promise<number[]> {
-    const correlationId = this.sendMessageToExtension({
-      cmd: "reorder-tabs",
-      tabOrder,
-    });
-    const message = await this.waitForResponse(correlationId, "tabs-reordered");
-    return message.tabOrder;
   }
 
   async getInteractiveElements(tabId: number) {
@@ -202,6 +182,7 @@ export class BrowserAPI {
     clickedText?: string;
     clickedTag?: string;
     href?: string;
+    matchCount?: number;
     error?: string;
   }> {
     const correlationId = this.sendMessageToExtension({
@@ -219,6 +200,7 @@ export class BrowserAPI {
       clickedText: message.clickedText,
       clickedTag: message.clickedTag,
       href: message.href,
+      matchCount: message.matchCount,
       error: message.error,
     };
   }
@@ -275,13 +257,43 @@ export class BrowserAPI {
     return message.success;
   }
 
-  async getPageOutline(tabId: number) {
+  async getTabInfo(tabId: number): Promise<{ url: string; title: string; status: string }> {
     const correlationId = this.sendMessageToExtension({
-      cmd: "get-page-outline",
+      cmd: "get-tab-info",
       tabId,
     });
-    const message = await this.waitForResponse(correlationId, "page-outline");
-    return message.headings;
+    const message = await this.waitForResponse(correlationId, "tab-info");
+    return { url: message.url, title: message.title, status: message.status };
+  }
+
+  async fillForm(
+    tabId: number,
+    fields: { selector: string; value?: string; checked?: boolean }[],
+    submit?: string
+  ): Promise<{ results: { selector: string; success: boolean; error?: string }[]; submitted: boolean }> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "fill-form",
+      tabId,
+      fields,
+      submit,
+    });
+    const message = await this.waitForResponse(correlationId, "form-filled");
+    return { results: message.results, submitted: message.submitted };
+  }
+
+  async waitForSelector(
+    tabId: number,
+    selector: string,
+    timeoutMs?: number
+  ): Promise<{ found: boolean }> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "wait-for-selector",
+      tabId,
+      selector,
+      timeoutMs,
+    });
+    const message = await this.waitForResponse(correlationId, "selector-found");
+    return { found: message.found };
   }
 
   async searchTabContent(tabId: number, query: string, contextChars?: number) {

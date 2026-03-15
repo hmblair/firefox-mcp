@@ -71,9 +71,6 @@ export class MessageHandler {
       case "get-tab-list":
         await this.sendTabs(req.correlationId);
         break;
-      case "get-browser-recent-history":
-        await this.sendRecentHistory(req.correlationId, req.searchQuery);
-        break;
       case "get-tab-content":
         await this.sendTabsContent(
           req.correlationId,
@@ -83,12 +80,6 @@ export class MessageHandler {
           req.includeLinks,
           req.maxLength
         );
-        break;
-      case "get-page-outline":
-        await this.sendPageOutline(req.correlationId, req.tabId);
-        break;
-      case "reorder-tabs":
-        await this.reorderTabs(req.correlationId, req.tabOrder);
         break;
       case "search-tab-content":
         await this.searchTabContent(
@@ -136,6 +127,25 @@ export class MessageHandler {
           req.tabId,
           req.text,
           req.tag
+        );
+        break;
+      case "get-tab-info":
+        await this.getTabInfo(req.correlationId, req.tabId);
+        break;
+      case "fill-form":
+        await this.fillForm(
+          req.correlationId,
+          req.tabId,
+          req.fields,
+          req.submit
+        );
+        break;
+      case "wait-for-selector":
+        await this.waitForSelector(
+          req.correlationId,
+          req.tabId,
+          req.selector,
+          req.timeoutMs
         );
         break;
       default:
@@ -193,10 +203,21 @@ export class MessageHandler {
     correlationId: string,
     tabIds: number[]
   ): Promise<void> {
-    await browser.tabs.remove(tabIds);
+    const closedTabIds: number[] = [];
+    const failedTabIds: number[] = [];
+    for (const id of tabIds) {
+      try {
+        await browser.tabs.remove(id);
+        closedTabIds.push(id);
+      } catch {
+        failedTabIds.push(id);
+      }
+    }
     await this.client.sendResourceToServer({
       resource: "tabs-closed",
       correlationId,
+      closedTabIds,
+      failedTabIds,
     });
   }
 
@@ -209,25 +230,6 @@ export class MessageHandler {
     });
   }
 
-  private async sendRecentHistory(
-    correlationId: string,
-    searchQuery: string | null = null
-  ): Promise<void> {
-    const historyItems = await browser.history.search({
-      text: searchQuery ?? "",
-      maxResults: 200,
-      startTime: 0,
-    });
-    const filteredHistoryItems = historyItems.filter((item) => {
-      return !!item.url;
-    });
-    await this.client.sendResourceToServer({
-      resource: "history",
-      correlationId,
-      historyItems: filteredHistoryItems,
-    });
-  }
-
   private async sendTabsContent(
     correlationId: string,
     tabId: number,
@@ -236,7 +238,7 @@ export class MessageHandler {
     includeLinks?: boolean,
     maxLength?: number
   ): Promise<void> {
-    const MAX_CONTENT_LENGTH = maxLength ?? 50_000;
+    const MAX_CONTENT_LENGTH = maxLength ?? 5_000;
     const safeSelector = selector ? JSON.stringify(selector) : "null";
     const results = await browser.tabs.executeScript(tabId, {
       code: `
@@ -258,7 +260,10 @@ export class MessageHandler {
 
         function getTextContent() {
           const root = selector ? document.querySelector(selector) : document.body;
-          if (!root) return { text: '', isTruncated: false, totalLength: 0 };
+          if (!root) {
+            if (selector) return { text: '', isTruncated: false, totalLength: 0, selectorNotFound: true };
+            return { text: '', isTruncated: false, totalLength: 0 };
+          }
           let isTruncated = false;
           const totalLength = root.innerText.length;
           let text = root.innerText.substring(offset);
@@ -274,7 +279,8 @@ export class MessageHandler {
           links: getLinks(),
           fullText: textContent.text,
           isTruncated: textContent.isTruncated,
-          totalLength: textContent.totalLength
+          totalLength: textContent.totalLength,
+          selectorNotFound: textContent.selectorNotFound || false
         };
       })();
     `,
@@ -284,7 +290,11 @@ export class MessageHandler {
       await this.client.sendErrorToServer(correlationId, `executeScript returned no results for tab ${tabId} — the tab may have been closed or navigated to a restricted page`);
       return;
     }
-    const { isTruncated, fullText, links, totalLength } = results[0];
+    const { isTruncated, fullText, links, totalLength, selectorNotFound } = results[0];
+    if (selectorNotFound) {
+      await this.client.sendErrorToServer(correlationId, `Selector not found: ${selector}`);
+      return;
+    }
     await this.client.sendResourceToServer({
       resource: "tab-content",
       tabId,
@@ -293,52 +303,6 @@ export class MessageHandler {
       fullText,
       links,
       totalLength,
-    });
-  }
-
-  private async sendPageOutline(
-    correlationId: string,
-    tabId: number
-  ): Promise<void> {
-    const results = await browser.tabs.executeScript(tabId, {
-      code: `
-      (function () {
-        const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        return Array.from(headings).map((el, i) => {
-          const level = parseInt(el.tagName[1]);
-          const text = el.textContent?.trim() || '';
-          let selector = '';
-          if (el.id) {
-            selector = '#' + CSS.escape(el.id);
-          } else {
-            const all = document.querySelectorAll(el.tagName);
-            const idx = Array.from(all).indexOf(el);
-            selector = el.tagName.toLowerCase() + ':nth-of-type(' + (idx + 1) + ')';
-          }
-          return { level, text, selector };
-        }).filter(h => h.text.length > 0);
-      })();
-    `,
-    });
-    await this.client.sendResourceToServer({
-      resource: "page-outline",
-      correlationId,
-      headings: results[0] || [],
-    });
-  }
-
-  private async reorderTabs(
-    correlationId: string,
-    tabOrder: number[]
-  ): Promise<void> {
-    for (let newIndex = 0; newIndex < tabOrder.length; newIndex++) {
-      const tabId = tabOrder[newIndex];
-      await browser.tabs.move(tabId, { index: newIndex });
-    }
-    await this.client.sendResourceToServer({
-      resource: "tabs-reordered",
-      correlationId,
-      tabOrder,
     });
   }
 
@@ -513,18 +477,29 @@ export class MessageHandler {
         const target = ${safeText}.toLowerCase();
         const tagFilter = ${safeTag};
         const all = document.querySelectorAll(tagFilter ? tagFilter.toLowerCase() : '*');
+        const matches = [];
         for (const el of all) {
           const elText = (el.innerText || el.textContent || '').trim();
           if (!elText.toLowerCase().includes(target)) continue;
           const rect = el.getBoundingClientRect();
           if (rect.width === 0 && rect.height === 0) continue;
           if (el.offsetParent === null && el.tagName !== 'BODY') continue;
-          el.click();
-          const result = { success: true, clickedText: elText.substring(0, 100), clickedTag: el.tagName.toLowerCase() };
-          if (el.href) result.href = el.href;
-          return result;
+          matches.push(el);
         }
-        return { success: false, error: 'No visible element found containing "' + ${safeText} + '"' };
+        if (matches.length === 0) {
+          return { success: false, error: 'No visible element found containing "' + ${safeText} + '"' };
+        }
+        matches.sort((a, b) => {
+          const aChildren = a.querySelectorAll('*').length;
+          const bChildren = b.querySelectorAll('*').length;
+          return aChildren - bChildren;
+        });
+        const el = matches[0];
+        const elText = (el.innerText || el.textContent || '').trim();
+        el.click();
+        const result = { success: true, clickedText: elText.substring(0, 100), clickedTag: el.tagName.toLowerCase(), matchCount: matches.length };
+        if (el.href) result.href = el.href;
+        return result;
       })();
     `,
     });
@@ -545,6 +520,7 @@ export class MessageHandler {
       clickedText: result.clickedText,
       clickedTag: result.clickedTag,
       href: result.href,
+      matchCount: result.matchCount,
       error: result.error,
     });
   }
@@ -634,6 +610,129 @@ export class MessageHandler {
       resource: "key-pressed",
       correlationId,
       success,
+    });
+  }
+
+  private async getTabInfo(
+    correlationId: string,
+    tabId: number
+  ): Promise<void> {
+    const tab = await browser.tabs.get(tabId);
+    await this.client.sendResourceToServer({
+      resource: "tab-info",
+      correlationId,
+      tabId,
+      url: tab.url || "",
+      title: tab.title || "",
+      status: tab.status || "unknown",
+    });
+  }
+
+  private async fillForm(
+    correlationId: string,
+    tabId: number,
+    fields: { selector: string; value: string }[],
+    submit?: string
+  ): Promise<void> {
+    await browser.tabs.update(tabId, { active: true });
+    const safeFields = JSON.stringify(fields);
+    const safeSubmit = submit ? JSON.stringify(submit) : "null";
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const fields = ${safeFields};
+        const submitSelector = ${safeSubmit};
+        const results = [];
+        for (const field of fields) {
+          try {
+            const el = document.querySelector(field.selector);
+            if (!el) {
+              results.push({ selector: field.selector, success: false, error: "Element not found" });
+              continue;
+            }
+            el.focus();
+            if (field.checked !== undefined) {
+              el.checked = field.checked;
+            } else if (field.value !== undefined) {
+              el.value = field.value;
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            results.push({ selector: field.selector, success: true });
+          } catch (e) {
+            results.push({ selector: field.selector, success: false, error: e.message });
+          }
+        }
+        let submitted = false;
+        if (submitSelector) {
+          const btn = document.querySelector(submitSelector);
+          if (btn) {
+            btn.click();
+            submitted = true;
+          }
+        }
+        return { results, submitted };
+      })();
+    `,
+    });
+
+    const result = results[0] || { results: [], submitted: false };
+
+    if (result.submitted) {
+      await waitForPossibleNavigation(tabId);
+    }
+
+    await this.client.sendResourceToServer({
+      resource: "form-filled",
+      correlationId,
+      results: result.results,
+      submitted: result.submitted,
+    });
+  }
+
+  private async waitForSelector(
+    correlationId: string,
+    tabId: number,
+    selector: string,
+    timeoutMs?: number
+  ): Promise<void> {
+    const timeout = timeoutMs ?? 5000;
+    const safeSelector = JSON.stringify(selector);
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      new Promise((resolve) => {
+        const selector = ${safeSelector};
+        const timeout = ${timeout};
+        const existing = document.querySelector(selector);
+        if (existing) {
+          resolve({ found: true });
+          return;
+        }
+        let resolved = false;
+        const observer = new MutationObserver(() => {
+          if (document.querySelector(selector)) {
+            resolved = true;
+            observer.disconnect();
+            resolve({ found: true });
+          }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        setTimeout(() => {
+          if (!resolved) {
+            observer.disconnect();
+            resolve({ found: false });
+          }
+        }, timeout);
+      });
+    `,
+    });
+
+    const result = results[0] || { found: false };
+
+    await this.client.sendResourceToServer({
+      resource: "selector-found",
+      correlationId,
+      found: result.found,
     });
   }
 

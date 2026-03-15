@@ -13,16 +13,16 @@ MCP Client (Claude, etc.) <--stdio--> MCP Server <--WebSocket--> Firefox Extensi
 | `openTab` | Open a URL in a new browser tab (waits for page load) |
 | `closeTabs` | Close browser tabs by their IDs |
 | `listTabs` | List all open browser tabs |
-| `searchHistory` | Search the browser's recent history |
 | `getTabContent` | Read a webpage's text content and links, optionally scoped to a CSS selector with a configurable max length |
-| `getPageOutline` | Get the heading structure (h1-h6) of a webpage with CSS selectors for each section |
-| `reorderTabs` | Reorder open browser tabs |
 | `searchTabContent` | Search for text in a webpage and return matching passages with context |
 | `listInteractiveElements` | List interactive elements (buttons, inputs, links) with CSS selectors |
 | `clickElement` | Click an element by CSS selector (waits for navigation) |
 | `typeIntoField` | Type text into an input field, optionally submitting the form |
 | `pressKey` | Simulate a key press (Enter, Escape, Tab, ArrowDown, etc.) |
 | `selectOption` | Select an option in a `<select>` dropdown by value |
+| `getTabInfo` | Get a tab's URL, title, and loading status without reading content |
+| `fillForm` | Fill multiple form fields in one call, optionally clicking a submit button |
+| `waitForSelector` | Wait for a CSS selector to appear on the page (for SPAs/dynamic content) |
 
 Open tab contents are also available as MCP resources.
 

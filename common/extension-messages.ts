@@ -29,22 +29,6 @@ export interface OpenedTabIdExtensionMessage extends ExtensionMessageBase {
   tabId: number | undefined;
 }
 
-export interface BrowserHistoryItem {
-  url?: string;
-  title?: string;
-  lastVisitTime?: number;
-}
-
-export interface BrowserHistoryExtensionMessage extends ExtensionMessageBase {
-  resource: "history";
-  historyItems: BrowserHistoryItem[];
-}
-
-export interface ReorderedTabsExtensionMessage extends ExtensionMessageBase {
-  resource: "tabs-reordered";
-  tabOrder: number[];
-}
-
 export interface SearchMatch {
   context: string;
   index: number;
@@ -57,6 +41,8 @@ export interface SearchTabContentExtensionMessage extends ExtensionMessageBase {
 
 export interface TabsClosedExtensionMessage extends ExtensionMessageBase {
   resource: "tabs-closed";
+  closedTabIds: number[];
+  failedTabIds: number[];
 }
 
 export interface InteractiveElement {
@@ -87,6 +73,7 @@ export interface ElementClickedByTextExtensionMessage
   clickedText?: string;
   clickedTag?: string;
   href?: string;
+  matchCount?: number;
   error?: string;
 }
 
@@ -105,23 +92,29 @@ export interface OptionSelectedExtensionMessage extends ExtensionMessageBase {
   success: boolean;
 }
 
-export interface PageHeading {
-  level: number;
-  text: string;
-  selector: string;
+export interface TabInfoExtensionMessage extends ExtensionMessageBase {
+  resource: "tab-info";
+  tabId: number;
+  url: string;
+  title: string;
+  status: string;
 }
 
-export interface PageOutlineExtensionMessage extends ExtensionMessageBase {
-  resource: "page-outline";
-  headings: PageHeading[];
+export interface FormFilledExtensionMessage extends ExtensionMessageBase {
+  resource: "form-filled";
+  results: { selector: string; success: boolean; error?: string }[];
+  submitted: boolean;
+}
+
+export interface SelectorFoundExtensionMessage extends ExtensionMessageBase {
+  resource: "selector-found";
+  found: boolean;
 }
 
 export type ExtensionMessage =
   | TabContentExtensionMessage
   | TabsExtensionMessage
   | OpenedTabIdExtensionMessage
-  | BrowserHistoryExtensionMessage
-  | ReorderedTabsExtensionMessage
   | SearchTabContentExtensionMessage
   | TabsClosedExtensionMessage
   | InteractiveElementsExtensionMessage
@@ -129,8 +122,10 @@ export type ExtensionMessage =
   | TextTypedExtensionMessage
   | KeyPressedExtensionMessage
   | OptionSelectedExtensionMessage
-  | PageOutlineExtensionMessage
-  | ElementClickedByTextExtensionMessage;
+  | ElementClickedByTextExtensionMessage
+  | TabInfoExtensionMessage
+  | FormFilledExtensionMessage
+  | SelectorFoundExtensionMessage;
 
 export interface ExtensionError {
   correlationId: string;

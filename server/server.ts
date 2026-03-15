@@ -60,8 +60,12 @@ mcpServer.tool(
   { tabIds: z.array(z.number()).describe("Tab IDs to close") },
   async ({ tabIds }) => {
     try {
-      await browserApi.closeTabs(tabIds);
-      return toolResponse({ success: true, closedTabIds: tabIds });
+      const { closedTabIds, failedTabIds } = await browserApi.closeTabs(tabIds);
+      const result: Record<string, unknown> = { success: true, closedTabIds };
+      if (failedTabIds.length > 0) {
+        result.failedTabIds = failedTabIds;
+      }
+      return toolResponse(result);
     } catch (error) {
       return toolError("closeTabs", error);
     }
@@ -105,33 +109,6 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "searchHistory",
-  "Search the browser's recent history",
-  {
-    query: z
-      .string()
-      .optional()
-      .describe("Search query to filter history (omit to list all recent)"),
-  },
-  async ({ query }) => {
-    try {
-      const browserHistory = await browserApi.getBrowserRecentHistory(query);
-      return toolResponse(
-        browserHistory.map((item) => ({
-          url: item.url,
-          title: item.title,
-          lastVisited: item.lastVisitTime
-            ? dayjs(item.lastVisitTime).fromNow()
-            : "unknown",
-        }))
-      );
-    } catch (error) {
-      return toolError("searchHistory", error);
-    }
-  }
-);
-
-mcpServer.tool(
   "getTabContent",
   "Read a webpage's text content and links by tab ID",
   {
@@ -156,7 +133,7 @@ mcpServer.tool(
       .number()
       .optional()
       .describe(
-        "Maximum characters of text to return (default: 50000). Use smaller values like 2000 to preview a page."
+        "Maximum characters of text to return (default: 5000). Use smaller values like 2000 to preview a page."
       ),
   },
   async ({ tabId, offset, selector, includeLinks, maxLength }) => {
@@ -180,38 +157,6 @@ mcpServer.tool(
       return toolResponse(result);
     } catch (error) {
       return toolError("getTabContent", error);
-    }
-  }
-);
-
-mcpServer.tool(
-  "getPageOutline",
-  "Get the heading structure (h1-h6) of a webpage with CSS selectors for each section",
-  { tabId: z.number().describe("The tab ID to get the outline from") },
-  async ({ tabId }) => {
-    try {
-      const headings = await browserApi.getPageOutline(tabId);
-      return toolResponse(headings);
-    } catch (error) {
-      return toolError("getPageOutline", error);
-    }
-  }
-);
-
-mcpServer.tool(
-  "reorderTabs",
-  "Reorder open browser tabs",
-  {
-    tabOrder: z
-      .array(z.number())
-      .describe("Ordered array of tab IDs representing the desired order"),
-  },
-  async ({ tabOrder }) => {
-    try {
-      const newOrder = await browserApi.reorderTabs(tabOrder);
-      return toolResponse({ success: true, tabOrder: newOrder });
-    } catch (error) {
-      return toolError("reorderTabs", error);
     }
   }
 );
@@ -254,8 +199,14 @@ mcpServer.tool(
       .describe(
         "Filter elements by text substring match on label, placeholder, or value"
       ),
+    limit: z
+      .number()
+      .optional()
+      .describe(
+        "Maximum number of elements to return (default: 50)"
+      ),
   },
-  async ({ tabId, filter }) => {
+  async ({ tabId, filter, limit }) => {
     try {
       let elements = await browserApi.getInteractiveElements(tabId);
       if (filter) {
@@ -267,7 +218,10 @@ mcpServer.tool(
             el.value?.toLowerCase().includes(lower)
         );
       }
-      return toolResponse(elements);
+      const totalCount = elements.length;
+      const maxElements = limit ?? 50;
+      elements = elements.slice(0, maxElements);
+      return toolResponse({ elements, totalCount });
     } catch (error) {
       return toolError("listInteractiveElements", error);
     }
@@ -317,8 +271,12 @@ mcpServer.tool(
           success: true,
           clickedTag: result.clickedTag,
           clickedText: result.clickedText,
+          matchCount: result.matchCount,
         };
         if (result.href) data.href = result.href;
+        if (result.matchCount && result.matchCount > 1) {
+          data.warning = `${result.matchCount} elements matched — clicked the most specific one`;
+        }
         return toolResponse(data);
       }
       return toolResponse({ success: false, error: result.error || "Element not found" }, true);
@@ -412,6 +370,79 @@ mcpServer.tool(
       return toolResponse({ success: false, error: `No <select> element found matching "${selector}"` }, true);
     } catch (error) {
       return toolError("selectOption", error);
+    }
+  }
+);
+
+mcpServer.tool(
+  "getTabInfo",
+  "Get a tab's current URL, title, and loading status without reading page content. Useful to verify navigation completed.",
+  {
+    tabId: z.number().describe("The tab ID to get info for"),
+  },
+  async ({ tabId }) => {
+    try {
+      const info = await browserApi.getTabInfo(tabId);
+      return toolResponse({ ...info, tabId });
+    } catch (error) {
+      return toolError("getTabInfo", error);
+    }
+  }
+);
+
+mcpServer.tool(
+  "fillForm",
+  "Fill multiple form fields in one call. Reduces round-trips for common form-filling workflows.",
+  {
+    tabId: z.number().describe("The tab ID containing the form"),
+    fields: z
+      .array(
+        z.object({
+          selector: z.string().describe("CSS selector of the input field"),
+          value: z.string().optional().describe("Value to set (for text inputs, textareas, selects)"),
+          checked: z.boolean().optional().describe("Check/uncheck (for checkboxes and radio buttons)"),
+        })
+      )
+      .describe("Array of {selector, value} or {selector, checked} pairs to fill"),
+    submit: z
+      .string()
+      .optional()
+      .describe("CSS selector of a button to click after filling fields (optional)"),
+  },
+  async ({ tabId, fields, submit }) => {
+    try {
+      const { results, submitted } = await browserApi.fillForm(tabId, fields, submit);
+      const filledCount = results.filter((r) => r.success).length;
+      return toolResponse({ success: filledCount > 0, filledCount, results, submitted });
+    } catch (error) {
+      return toolError("fillForm", error);
+    }
+  }
+);
+
+mcpServer.tool(
+  "waitForSelector",
+  "Wait for a CSS selector to appear on the page. Essential for SPAs where content appears after JS execution.",
+  {
+    tabId: z.number().describe("The tab ID to wait in"),
+    selector: z.string().describe("CSS selector to wait for"),
+    timeout: z
+      .number()
+      .optional()
+      .describe("Maximum time to wait in milliseconds (default: 5000)"),
+  },
+  async ({ tabId, selector, timeout }) => {
+    try {
+      const { found } = await browserApi.waitForSelector(tabId, selector, timeout);
+      if (found) {
+        return toolResponse({ success: true, selector });
+      }
+      return toolResponse(
+        { success: false, error: `Timed out after ${timeout ?? 5000}ms waiting for "${selector}"` },
+        true
+      );
+    } catch (error) {
+      return toolError("waitForSelector", error);
     }
   }
 );

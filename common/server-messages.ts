@@ -18,11 +18,6 @@ export interface GetTabListServerMessage extends ServerMessageBase {
   cmd: "get-tab-list";
 }
 
-export interface GetBrowserRecentHistoryServerMessage extends ServerMessageBase {
-  cmd: "get-browser-recent-history";
-  searchQuery?: string;
-}
-
 export interface GetTabContentServerMessage extends ServerMessageBase {
   cmd: "get-tab-content";
   tabId: number;
@@ -30,16 +25,6 @@ export interface GetTabContentServerMessage extends ServerMessageBase {
   selector?: string;
   includeLinks?: boolean;
   maxLength?: number;
-}
-
-export interface GetPageOutlineServerMessage extends ServerMessageBase {
-  cmd: "get-page-outline";
-  tabId: number;
-}
-
-export interface ReorderTabsServerMessage extends ServerMessageBase {
-  cmd: "reorder-tabs";
-  tabOrder: number[];
 }
 
 export interface SearchTabContentServerMessage extends ServerMessageBase {
@@ -90,20 +75,39 @@ export interface ClickElementByTextServerMessage extends ServerMessageBase {
   tag?: string;
 }
 
+export interface GetTabInfoServerMessage extends ServerMessageBase {
+  cmd: "get-tab-info";
+  tabId: number;
+}
+
+export interface FillFormServerMessage extends ServerMessageBase {
+  cmd: "fill-form";
+  tabId: number;
+  fields: { selector: string; value?: string; checked?: boolean }[];
+  submit?: string;
+}
+
+export interface WaitForSelectorServerMessage extends ServerMessageBase {
+  cmd: "wait-for-selector";
+  tabId: number;
+  selector: string;
+  timeoutMs?: number;
+}
+
 export type ServerMessage =
   | OpenLinkServerMessage
   | CloseTabsServerMessage
   | GetTabListServerMessage
-  | GetBrowserRecentHistoryServerMessage
   | GetTabContentServerMessage
-  | GetPageOutlineServerMessage
-  | ReorderTabsServerMessage
   | SearchTabContentServerMessage
   | GetInteractiveElementsServerMessage
   | ClickElementServerMessage
   | TypeIntoFieldServerMessage
   | PressKeyServerMessage
   | SelectOptionServerMessage
-  | ClickElementByTextServerMessage;
+  | ClickElementByTextServerMessage
+  | GetTabInfoServerMessage
+  | FillFormServerMessage
+  | WaitForSelectorServerMessage;
 
 export type ServerMessageRequest = ServerMessage & { correlationId: string };
