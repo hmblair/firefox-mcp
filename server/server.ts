@@ -110,7 +110,7 @@ mcpServer.tool(
 
 mcpServer.tool(
   "getTabContent",
-  "Read a webpage's text content and links by tab ID",
+  "Read a webpage's content organized by page sections (nav, main, sidebar, etc.) with structural formatting. For finding interactive elements, prefer listInteractiveElements.",
   {
     tabId: z.number().describe("The tab ID to read content from"),
     offset: z
@@ -146,12 +146,15 @@ mcpServer.tool(
         maxLength
       );
       const result: Record<string, unknown> = {
-        text: content.fullText,
         totalLength: content.totalLength,
-        range: [offset, offset + content.fullText.length],
         isTruncated: content.isTruncated,
       };
-      if (includeLinks) {
+      if (content.sections) {
+        result.sections = content.sections;
+      } else {
+        result.text = content.fullText;
+      }
+      if (includeLinks && content.links && content.links.length > 0) {
         result.links = content.links;
       }
       return toolResponse(result);
@@ -190,14 +193,14 @@ mcpServer.tool(
 
 mcpServer.tool(
   "listInteractiveElements",
-  "List interactive elements on a webpage (buttons, inputs, links, selects, textareas) with CSS selectors",
+  "List interactive elements on a webpage with CSS selectors. Use this as the first step to find what to click, type into, or interact with. Use filter to narrow by type (e.g. 'textarea', 'button'), label, href, or page section.",
   {
     tabId: z.number().describe("The tab ID to inspect"),
     filter: z
       .string()
       .optional()
       .describe(
-        "Filter elements by text substring match on label, placeholder, or value"
+        "Filter elements by substring match on type, label, placeholder, value, href, or context (nearest heading)"
       ),
     limit: z
       .number()
@@ -212,7 +215,8 @@ mcpServer.tool(
       if (filter) {
         const lower = filter.toLowerCase();
         elements = elements.filter(
-          (el: { label?: string; placeholder?: string; value?: string; href?: string; context?: string }) =>
+          (el: { type?: string; label?: string; placeholder?: string; value?: string; href?: string; context?: string }) =>
+            el.type?.toLowerCase().includes(lower) ||
             el.label?.toLowerCase().includes(lower) ||
             el.placeholder?.toLowerCase().includes(lower) ||
             el.value?.toLowerCase().includes(lower) ||
@@ -232,7 +236,7 @@ mcpServer.tool(
 
 mcpServer.tool(
   "clickElement",
-  "Click an element on a webpage by CSS selector",
+  "Click an element on a webpage by CSS selector (reports whether navigation occurred)",
   {
     tabId: z.number().describe("The tab ID containing the element"),
     selector: z.string().describe("CSS selector of the element to click"),
@@ -437,19 +441,20 @@ mcpServer.resource(
       undefined,
       true
     );
-    const listOfLinks =
-      content?.links
-        .map(
-          (link: { text: string; url: string }) => `[${link.text}](${link.url})`
-        )
-        .join("\n") ?? "";
-    const fullText = content?.fullText ?? "";
+    let text: string;
+    if (content?.sections) {
+      text = content.sections
+        .map((s: { label: string; content: string }) => `[${s.label}]\n${s.content}`)
+        .join("\n\n");
+    } else {
+      text = content?.fullText ?? "";
+    }
     return {
       contents: [
         {
           uri: uri.href,
           mimeType: "text/plain",
-          text: `Webpage text: \n\n${fullText} \n\nWeb page Links:\n${listOfLinks}`,
+          text,
         },
       ],
     };

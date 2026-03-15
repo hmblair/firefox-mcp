@@ -3,13 +3,19 @@ export interface ExtensionMessageBase {
   correlationId: string;
 }
 
+export interface ContentSection {
+  label: string;
+  content: string;
+}
+
 export interface TabContentExtensionMessage extends ExtensionMessageBase {
   resource: "tab-content";
   tabId: number;
-  fullText: string;
+  fullText?: string;
+  sections?: ContentSection[];
   isTruncated: boolean;
   totalLength: number;
-  links: { url: string; text: string }[];
+  links?: { url: string; text: string }[];
 }
 
 export interface BrowserTab {
