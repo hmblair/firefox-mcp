@@ -14,6 +14,19 @@ const mcpServer = new McpServer({
   version: process.env.MCP_VERSION || "0.0.0",
 });
 
+function toolResponse(data: Record<string, unknown> | unknown[], isError = false) {
+  const content: { type: "text"; text: string; isError?: true }[] = [
+    { type: "text", text: JSON.stringify(data, null, 2), ...(isError && { isError: true as const }) },
+  ];
+  return { content };
+}
+
+function toolError(toolName: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[tool] ${toolName} failed: ${message}`);
+  return toolResponse({ success: false, error: `${toolName}: ${message}` }, true);
+}
+
 mcpServer.tool(
   "openLink",
   "Open a URL in the browser. By default navigates the active tab. Use newTab=true to open in a new tab.",
@@ -29,22 +42,14 @@ mcpServer.tool(
       .describe("Open in a new tab instead of navigating an existing one (default: false)"),
   },
   async ({ url, tabId, newTab }) => {
-    const resultTabId = await browserApi.openLink(url, tabId, newTab);
-    if (resultTabId !== undefined) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: newTab
-              ? `${url} opened in new tab ${resultTabId}`
-              : `Tab ${resultTabId} navigated to ${url}`,
-          },
-        ],
-      };
-    } else {
-      return {
-        content: [{ type: "text", text: "Failed to open URL", isError: true }],
-      };
+    try {
+      const resultTabId = await browserApi.openLink(url, tabId, newTab);
+      if (resultTabId !== undefined) {
+        return toolResponse({ success: true, tabId: resultTabId, url, newTab });
+      }
+      return toolResponse({ success: false, error: "Failed to open URL" }, true);
+    } catch (error) {
+      return toolError("openLink", error);
     }
   }
 );
@@ -54,10 +59,12 @@ mcpServer.tool(
   "Close browser tabs by their IDs",
   { tabIds: z.array(z.number()).describe("Tab IDs to close") },
   async ({ tabIds }) => {
-    await browserApi.closeTabs(tabIds);
-    return {
-      content: [{ type: "text", text: "Closed tabs" }],
-    };
+    try {
+      await browserApi.closeTabs(tabIds);
+      return toolResponse({ success: true, closedTabIds: tabIds });
+    } catch (error) {
+      return toolError("closeTabs", error);
+    }
   }
 );
 
@@ -71,34 +78,29 @@ mcpServer.tool(
       .describe("Filter tabs by substring match on URL or title"),
   },
   async ({ query }) => {
-    let openTabs = await browserApi.getTabList();
-    if (query) {
-      const lower = query.toLowerCase();
-      openTabs = openTabs.filter(
-        (tab) =>
-          tab.url?.toLowerCase().includes(lower) ||
-          tab.title?.toLowerCase().includes(lower)
+    try {
+      let openTabs = await browserApi.getTabList();
+      if (query) {
+        const lower = query.toLowerCase();
+        openTabs = openTabs.filter(
+          (tab) =>
+            tab.url?.toLowerCase().includes(lower) ||
+            tab.title?.toLowerCase().includes(lower)
+        );
+      }
+      return toolResponse(
+        openTabs.map((tab) => ({
+          id: tab.id,
+          url: tab.url,
+          title: tab.title,
+          lastAccessed: tab.lastAccessed
+            ? dayjs(tab.lastAccessed).fromNow()
+            : "unknown",
+        }))
       );
+    } catch (error) {
+      return toolError("listTabs", error);
     }
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            openTabs.map((tab) => ({
-              id: tab.id,
-              url: tab.url,
-              title: tab.title,
-              lastAccessed: tab.lastAccessed
-                ? dayjs(tab.lastAccessed).fromNow()
-                : "unknown",
-            })),
-            null,
-            2
-          ),
-        },
-      ],
-    };
   }
 );
 
@@ -112,31 +114,20 @@ mcpServer.tool(
       .describe("Search query to filter history (omit to list all recent)"),
   },
   async ({ query }) => {
-    const browserHistory = await browserApi.getBrowserRecentHistory(query);
-    if (browserHistory.length === 0) {
-      const hint = query ? " Try without a query." : "";
-      return {
-        content: [{ type: "text", text: `No history found.${hint}` }],
-      };
+    try {
+      const browserHistory = await browserApi.getBrowserRecentHistory(query);
+      return toolResponse(
+        browserHistory.map((item) => ({
+          url: item.url,
+          title: item.title,
+          lastVisited: item.lastVisitTime
+            ? dayjs(item.lastVisitTime).fromNow()
+            : "unknown",
+        }))
+      );
+    } catch (error) {
+      return toolError("searchHistory", error);
     }
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            browserHistory.map((item) => ({
-              url: item.url,
-              title: item.title,
-              lastVisited: item.lastVisitTime
-                ? dayjs(item.lastVisitTime).fromNow()
-                : "unknown",
-            })),
-            null,
-            2
-          ),
-        },
-      ],
-    };
   }
 );
 
@@ -169,38 +160,27 @@ mcpServer.tool(
       ),
   },
   async ({ tabId, offset, selector, includeLinks, maxLength }) => {
-    const content = await browserApi.getTabContent(
-      tabId,
-      offset,
-      selector,
-      includeLinks,
-      maxLength
-    );
-    let links: { type: "text"; text: string }[] = [];
-    if (includeLinks && content.links.length > 0) {
-      links = content.links.map((link: { text: string; url: string }) => ({
-        type: "text",
-        text: `[${link.text}](${link.url})`,
-      }));
+    try {
+      const content = await browserApi.getTabContent(
+        tabId,
+        offset,
+        selector,
+        includeLinks,
+        maxLength
+      );
+      const result: Record<string, unknown> = {
+        text: content.fullText,
+        totalLength: content.totalLength,
+        range: [offset, offset + content.fullText.length],
+        isTruncated: content.isTruncated,
+      };
+      if (includeLinks) {
+        result.links = content.links;
+      }
+      return toolResponse(result);
+    } catch (error) {
+      return toolError("getTabContent", error);
     }
-
-    let text = content.fullText;
-    let hint: { type: "text"; text: string }[] = [];
-    if (content.isTruncated || offset > 0) {
-      const rangeString = `${offset}-${offset + text.length}`;
-      hint = [
-        {
-          type: "text",
-          text:
-            `Content truncated (range ${rangeString} of ${content.totalLength}). ` +
-            "Use getTabContent with a higher offset to read more.",
-        },
-      ];
-    }
-
-    return {
-      content: [...hint, { type: "text", text }, ...links],
-    };
   }
 );
 
@@ -209,20 +189,12 @@ mcpServer.tool(
   "Get the heading structure (h1-h6) of a webpage with CSS selectors for each section",
   { tabId: z.number().describe("The tab ID to get the outline from") },
   async ({ tabId }) => {
-    const headings = await browserApi.getPageOutline(tabId);
-    if (headings.length === 0) {
-      return {
-        content: [{ type: "text", text: "No headings found on the page" }],
-      };
+    try {
+      const headings = await browserApi.getPageOutline(tabId);
+      return toolResponse(headings);
+    } catch (error) {
+      return toolError("getPageOutline", error);
     }
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(headings, null, 2),
-        },
-      ],
-    };
   }
 );
 
@@ -235,12 +207,12 @@ mcpServer.tool(
       .describe("Ordered array of tab IDs representing the desired order"),
   },
   async ({ tabOrder }) => {
-    const newOrder = await browserApi.reorderTabs(tabOrder);
-    return {
-      content: [
-        { type: "text", text: `Tabs reordered: ${newOrder.join(", ")}` },
-      ],
-    };
+    try {
+      const newOrder = await browserApi.reorderTabs(tabOrder);
+      return toolResponse({ success: true, tabOrder: newOrder });
+    } catch (error) {
+      return toolError("reorderTabs", error);
+    }
   }
 );
 
@@ -258,24 +230,16 @@ mcpServer.tool(
       ),
   },
   async ({ tabId, query, contextChars }) => {
-    const matches = await browserApi.searchTabContent(
-      tabId,
-      query,
-      contextChars
-    );
-    if (matches.length === 0) {
-      return {
-        content: [{ type: "text", text: `No matches found for "${query}"` }],
-      };
+    try {
+      const matches = await browserApi.searchTabContent(
+        tabId,
+        query,
+        contextChars
+      );
+      return toolResponse(matches);
+    } catch (error) {
+      return toolError("searchTabContent", error);
     }
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(matches, null, 2),
-        },
-      ],
-    };
   }
 );
 
@@ -292,36 +256,21 @@ mcpServer.tool(
       ),
   },
   async ({ tabId, filter }) => {
-    let elements = await browserApi.getInteractiveElements(tabId);
-    if (filter) {
-      const lower = filter.toLowerCase();
-      elements = elements.filter(
-        (el: { label?: string; placeholder?: string; value?: string }) =>
-          el.label?.toLowerCase().includes(lower) ||
-          el.placeholder?.toLowerCase().includes(lower) ||
-          el.value?.toLowerCase().includes(lower)
-      );
+    try {
+      let elements = await browserApi.getInteractiveElements(tabId);
+      if (filter) {
+        const lower = filter.toLowerCase();
+        elements = elements.filter(
+          (el: { label?: string; placeholder?: string; value?: string }) =>
+            el.label?.toLowerCase().includes(lower) ||
+            el.placeholder?.toLowerCase().includes(lower) ||
+            el.value?.toLowerCase().includes(lower)
+        );
+      }
+      return toolResponse(elements);
+    } catch (error) {
+      return toolError("listInteractiveElements", error);
     }
-    if (elements.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: filter
-              ? `No interactive elements matching "${filter}" found`
-              : "No interactive elements found on the page",
-          },
-        ],
-      };
-    }
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(elements, null, 2),
-        },
-      ],
-    };
   }
 );
 
@@ -333,18 +282,15 @@ mcpServer.tool(
     selector: z.string().describe("CSS selector of the element to click"),
   },
   async ({ tabId, selector }) => {
-    const result = await browserApi.clickElement(tabId, selector);
-    return {
-      content: [
-        {
-          type: "text",
-          text: result.success
-            ? `Clicked element matching "${selector}"`
-            : `Failed to click "${selector}": ${result.error || "unknown error"}`,
-          isError: !result.success,
-        },
-      ],
-    };
+    try {
+      const result = await browserApi.clickElement(tabId, selector);
+      if (result.success) {
+        return toolResponse({ success: true, selector });
+      }
+      return toolResponse({ success: false, error: result.error || "Unknown error" }, true);
+    } catch (error) {
+      return toolError("clickElement", error);
+    }
   }
 );
 
@@ -364,31 +310,21 @@ mcpServer.tool(
       ),
   },
   async ({ tabId, text, tag }) => {
-    const result = await browserApi.clickElementByText(tabId, text, tag);
-    if (result.success) {
-      const response: Record<string, string> = {
-        clicked: `<${result.clickedTag}>`,
-        text: result.clickedText || "",
-      };
-      if (result.href) response.href = result.href;
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(response, null, 2),
-          },
-        ],
-      };
+    try {
+      const result = await browserApi.clickElementByText(tabId, text, tag);
+      if (result.success) {
+        const data: Record<string, unknown> = {
+          success: true,
+          clickedTag: result.clickedTag,
+          clickedText: result.clickedText,
+        };
+        if (result.href) data.href = result.href;
+        return toolResponse(data);
+      }
+      return toolResponse({ success: false, error: result.error || "Element not found" }, true);
+    } catch (error) {
+      return toolError("clickElementByText", error);
     }
-    return {
-      content: [
-        {
-          type: "text",
-          text: result.error || "Element not found",
-          isError: true,
-        },
-      ],
-    };
   }
 );
 
@@ -409,24 +345,21 @@ mcpServer.tool(
       .describe("Submit the containing form after typing (default: false)"),
   },
   async ({ tabId, selector, text, clearFirst, submit }) => {
-    const success = await browserApi.typeIntoField(
-      tabId,
-      selector,
-      text,
-      clearFirst,
-      submit
-    );
-    return {
-      content: [
-        {
-          type: "text",
-          text: success
-            ? `Typed text into element matching "${selector}"`
-            : `No element found matching "${selector}"`,
-          isError: !success,
-        },
-      ],
-    };
+    try {
+      const success = await browserApi.typeIntoField(
+        tabId,
+        selector,
+        text,
+        clearFirst,
+        submit
+      );
+      if (success) {
+        return toolResponse({ success: true, selector });
+      }
+      return toolResponse({ success: false, error: `No element found matching "${selector}"` }, true);
+    } catch (error) {
+      return toolError("typeIntoField", error);
+    }
   }
 );
 
@@ -448,18 +381,15 @@ mcpServer.tool(
       ),
   },
   async ({ tabId, key, selector }) => {
-    const success = await browserApi.pressKey(tabId, key, selector);
-    return {
-      content: [
-        {
-          type: "text",
-          text: success
-            ? `Pressed "${key}"`
-            : `Failed to press "${key}"`,
-          isError: !success,
-        },
-      ],
-    };
+    try {
+      const success = await browserApi.pressKey(tabId, key, selector);
+      if (success) {
+        return toolResponse({ success: true, key });
+      }
+      return toolResponse({ success: false, error: `Failed to press "${key}"` }, true);
+    } catch (error) {
+      return toolError("pressKey", error);
+    }
   }
 );
 
@@ -474,18 +404,15 @@ mcpServer.tool(
     value: z.string().describe("The value attribute of the option to select"),
   },
   async ({ tabId, selector, value }) => {
-    const success = await browserApi.selectOption(tabId, selector, value);
-    return {
-      content: [
-        {
-          type: "text",
-          text: success
-            ? `Selected option "${value}" in "${selector}"`
-            : `No <select> element found matching "${selector}"`,
-          isError: !success,
-        },
-      ],
-    };
+    try {
+      const success = await browserApi.selectOption(tabId, selector, value);
+      if (success) {
+        return toolResponse({ success: true, selector, value });
+      }
+      return toolResponse({ success: false, error: `No <select> element found matching "${selector}"` }, true);
+    } catch (error) {
+      return toolError("selectOption", error);
+    }
   }
 );
 
