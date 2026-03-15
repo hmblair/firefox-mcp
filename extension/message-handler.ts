@@ -306,9 +306,17 @@ export class MessageHandler {
           }
 
           if (seen.has(selector)) {
-            const all = document.querySelectorAll(selector);
-            const idx = Array.from(all).indexOf(el);
-            selector = ':nth-match(' + selector + ', ' + idx + ')';
+            if (el.value) {
+              selector += '[value="' + CSS.escape(el.value) + '"]';
+            }
+            if (seen.has(selector)) {
+              const parent = el.parentElement;
+              if (parent) {
+                const idx = Array.from(parent.children).indexOf(el) + 1;
+                const pSel = parent.id ? '#' + CSS.escape(parent.id) : parent.tagName.toLowerCase();
+                selector = pSel + ' > :nth-child(' + idx + ')';
+              }
+            }
           }
           seen.add(selector);
 
