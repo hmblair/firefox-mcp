@@ -421,10 +421,20 @@ export class MessageHandler {
       (function () {
         const target = ${escapedSelector ? `document.querySelector('${escapedSelector}')` : `document.activeElement || document.body`};
         if (!target) return false;
-        const opts = { key: '${escapedKey}', bubbles: true, cancelable: true };
+        const key = '${escapedKey}';
+        const opts = { key: key, bubbles: true, cancelable: true };
         target.dispatchEvent(new KeyboardEvent('keydown', opts));
         target.dispatchEvent(new KeyboardEvent('keypress', opts));
         target.dispatchEvent(new KeyboardEvent('keyup', opts));
+        // Synthetic keyboard events are not trusted, so they won't trigger
+        // native form submission. If Enter was pressed on a form element,
+        // explicitly submit the form.
+        if (key === 'Enter') {
+          const form = target.closest ? target.closest('form') : null;
+          if (form) {
+            form.requestSubmit();
+          }
+        }
         return true;
       })();
     `,
