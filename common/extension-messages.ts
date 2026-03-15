@@ -89,6 +89,17 @@ export interface OptionSelectedExtensionMessage extends ExtensionMessageBase {
   success: boolean;
 }
 
+export interface PageHeading {
+  level: number;
+  text: string;
+  selector: string;
+}
+
+export interface PageOutlineExtensionMessage extends ExtensionMessageBase {
+  resource: "page-outline";
+  headings: PageHeading[];
+}
+
 export type ExtensionMessage =
   | TabContentExtensionMessage
   | TabsExtensionMessage
@@ -101,7 +112,8 @@ export type ExtensionMessage =
   | ElementClickedExtensionMessage
   | TextTypedExtensionMessage
   | KeyPressedExtensionMessage
-  | OptionSelectedExtensionMessage;
+  | OptionSelectedExtensionMessage
+  | PageOutlineExtensionMessage;
 
 export interface ExtensionError {
   correlationId: string;

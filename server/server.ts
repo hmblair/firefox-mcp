@@ -124,13 +124,20 @@ mcpServer.tool(
       .boolean()
       .default(false)
       .describe("Include links found on the page (default: false)"),
+    maxLength: z
+      .number()
+      .optional()
+      .describe(
+        "Maximum characters of text to return (default: 50000). Use smaller values like 2000 to preview a page."
+      ),
   },
-  async ({ tabId, offset, selector, includeLinks }) => {
+  async ({ tabId, offset, selector, includeLinks, maxLength }) => {
     const content = await browserApi.getTabContent(
       tabId,
       offset,
       selector,
-      includeLinks
+      includeLinks,
+      maxLength
     );
     let links: { type: "text"; text: string }[] = [];
     if (includeLinks && content.links.length > 0) {
@@ -156,6 +163,26 @@ mcpServer.tool(
 
     return {
       content: [...hint, { type: "text", text }, ...links],
+    };
+  }
+);
+
+mcpServer.tool(
+  "getPageOutline",
+  "Get the heading structure (h1-h6) of a webpage with CSS selectors for each section",
+  { tabId: z.number().describe("The tab ID to get the outline from") },
+  async ({ tabId }) => {
+    const headings = await browserApi.getPageOutline(tabId);
+    if (headings.length === 0) {
+      return {
+        content: [{ type: "text", text: "No headings found on the page" }],
+      };
+    }
+    return {
+      content: headings.map((h) => ({
+        type: "text",
+        text: `${"  ".repeat(h.level - 1)}h${h.level}: ${h.text}  [${h.selector}]`,
+      })),
     };
   }
 );

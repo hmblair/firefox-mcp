@@ -62,8 +62,12 @@ export class MessageHandler {
           req.tabId,
           req.offset,
           req.selector,
-          req.includeLinks
+          req.includeLinks,
+          req.maxLength
         );
+        break;
+      case "get-page-outline":
+        await this.sendPageOutline(req.correlationId, req.tabId);
         break;
       case "reorder-tabs":
         await this.reorderTabs(req.correlationId, req.tabOrder);
@@ -176,9 +180,10 @@ export class MessageHandler {
     tabId: number,
     offset?: number,
     selector?: string,
-    includeLinks?: boolean
+    includeLinks?: boolean,
+    maxLength?: number
   ): Promise<void> {
-    const MAX_CONTENT_LENGTH = 50_000;
+    const MAX_CONTENT_LENGTH = maxLength ?? 50_000;
     const safeSelector = selector ? JSON.stringify(selector) : "null";
     const results = await browser.tabs.executeScript(tabId, {
       code: `
@@ -230,6 +235,37 @@ export class MessageHandler {
       fullText,
       links,
       totalLength,
+    });
+  }
+
+  private async sendPageOutline(
+    correlationId: string,
+    tabId: number
+  ): Promise<void> {
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        return Array.from(headings).map((el, i) => {
+          const level = parseInt(el.tagName[1]);
+          const text = el.textContent?.trim() || '';
+          let selector = '';
+          if (el.id) {
+            selector = '#' + CSS.escape(el.id);
+          } else {
+            const all = document.querySelectorAll(el.tagName);
+            const idx = Array.from(all).indexOf(el);
+            selector = el.tagName.toLowerCase() + ':nth-of-type(' + (idx + 1) + ')';
+          }
+          return { level, text, selector };
+        }).filter(h => h.text.length > 0);
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "page-outline",
+      correlationId,
+      headings: results[0] || [],
     });
   }
 

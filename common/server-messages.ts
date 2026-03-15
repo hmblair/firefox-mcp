@@ -27,6 +27,12 @@ export interface GetTabContentServerMessage extends ServerMessageBase {
   offset?: number;
   selector?: string;
   includeLinks?: boolean;
+  maxLength?: number;
+}
+
+export interface GetPageOutlineServerMessage extends ServerMessageBase {
+  cmd: "get-page-outline";
+  tabId: number;
 }
 
 export interface ReorderTabsServerMessage extends ServerMessageBase {
@@ -80,6 +86,7 @@ export type ServerMessage =
   | GetTabListServerMessage
   | GetBrowserRecentHistoryServerMessage
   | GetTabContentServerMessage
+  | GetPageOutlineServerMessage
   | ReorderTabsServerMessage
   | FindHighlightServerMessage
   | GetInteractiveElementsServerMessage

@@ -130,7 +130,8 @@ export class BrowserAPI {
     tabId: number,
     offset: number,
     selector?: string,
-    includeLinks?: boolean
+    includeLinks?: boolean,
+    maxLength?: number
   ): Promise<TabContentExtensionMessage> {
     const correlationId = this.sendMessageToExtension({
       cmd: "get-tab-content",
@@ -138,6 +139,7 @@ export class BrowserAPI {
       offset,
       selector,
       includeLinks,
+      maxLength,
     });
     return await this.waitForResponse(correlationId, "tab-content");
   }
@@ -220,6 +222,15 @@ export class BrowserAPI {
       "option-selected"
     );
     return message.success;
+  }
+
+  async getPageOutline(tabId: number) {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "get-page-outline",
+      tabId,
+    });
+    const message = await this.waitForResponse(correlationId, "page-outline");
+    return message.headings;
   }
 
   async findHighlight(tabId: number, queryPhrase: string): Promise<number> {
