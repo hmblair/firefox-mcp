@@ -37,7 +37,6 @@ export interface BrowserHistoryItem {
 
 export interface BrowserHistoryExtensionMessage extends ExtensionMessageBase {
   resource: "history";
-
   historyItems: BrowserHistoryItem[];
 }
 
@@ -80,6 +79,16 @@ export interface TextTypedExtensionMessage extends ExtensionMessageBase {
   success: boolean;
 }
 
+export interface KeyPressedExtensionMessage extends ExtensionMessageBase {
+  resource: "key-pressed";
+  success: boolean;
+}
+
+export interface OptionSelectedExtensionMessage extends ExtensionMessageBase {
+  resource: "option-selected";
+  success: boolean;
+}
+
 export type ExtensionMessage =
   | TabContentExtensionMessage
   | TabsExtensionMessage
@@ -90,7 +99,9 @@ export type ExtensionMessage =
   | TabsClosedExtensionMessage
   | InteractiveElementsExtensionMessage
   | ElementClickedExtensionMessage
-  | TextTypedExtensionMessage;
+  | TextTypedExtensionMessage
+  | KeyPressedExtensionMessage
+  | OptionSelectedExtensionMessage;
 
 export interface ExtensionError {
   correlationId: string;

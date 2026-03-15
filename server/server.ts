@@ -114,17 +114,30 @@ mcpServer.tool(
       .describe(
         "Character offset for paginating large documents (default: 0)"
       ),
+    selector: z
+      .string()
+      .optional()
+      .describe(
+        "CSS selector to read only a specific element (e.g. 'article', '#content'). Omit to read the full page."
+      ),
+    includeLinks: z
+      .boolean()
+      .default(false)
+      .describe("Include links found on the page (default: false)"),
   },
-  async ({ tabId, offset }) => {
-    const content = await browserApi.getTabContent(tabId, offset);
+  async ({ tabId, offset, selector, includeLinks }) => {
+    const content = await browserApi.getTabContent(
+      tabId,
+      offset,
+      selector,
+      includeLinks
+    );
     let links: { type: "text"; text: string }[] = [];
-    if (offset === 0) {
-      links = content.links.map((link: { text: string; url: string }) => {
-        return {
-          type: "text",
-          text: `Link text: ${link.text}, Link URL: ${link.url}`,
-        };
-      });
+    if (includeLinks && content.links.length > 0) {
+      links = content.links.map((link: { text: string; url: string }) => ({
+        type: "text",
+        text: `[${link.text}](${link.url})`,
+      }));
     }
 
     let text = content.fullText;
@@ -268,6 +281,65 @@ mcpServer.tool(
   }
 );
 
+mcpServer.tool(
+  "pressKey",
+  "Simulate a key press in a browser tab (e.g. Enter, Escape, Tab, ArrowDown)",
+  {
+    tabId: z.number().describe("The tab ID to send the key press to"),
+    key: z
+      .string()
+      .describe(
+        "The key to press (e.g. 'Enter', 'Escape', 'Tab', 'ArrowDown', 'a')"
+      ),
+    selector: z
+      .string()
+      .optional()
+      .describe(
+        "CSS selector of the element to target (defaults to the currently focused element)"
+      ),
+  },
+  async ({ tabId, key, selector }) => {
+    const success = await browserApi.pressKey(tabId, key, selector);
+    return {
+      content: [
+        {
+          type: "text",
+          text: success
+            ? `Pressed "${key}"`
+            : `Failed to press "${key}"`,
+          isError: !success,
+        },
+      ],
+    };
+  }
+);
+
+mcpServer.tool(
+  "selectOption",
+  "Select an option in a <select> dropdown by value",
+  {
+    tabId: z.number().describe("The tab ID containing the dropdown"),
+    selector: z
+      .string()
+      .describe("CSS selector of the <select> element"),
+    value: z.string().describe("The value attribute of the option to select"),
+  },
+  async ({ tabId, selector, value }) => {
+    const success = await browserApi.selectOption(tabId, selector, value);
+    return {
+      content: [
+        {
+          type: "text",
+          text: success
+            ? `Selected option "${value}" in "${selector}"`
+            : `No <select> element found matching "${selector}"`,
+          isError: !success,
+        },
+      ],
+    };
+  }
+);
+
 mcpServer.resource(
   "open-tab-contents",
   new ResourceTemplate("browser://tab/{tabId}/content", {
@@ -283,11 +355,16 @@ mcpServer.resource(
     },
   }),
   async (uri, { tabId }) => {
-    const content = await browserApi.getTabContent(Number(tabId), 0);
+    const content = await browserApi.getTabContent(
+      Number(tabId),
+      0,
+      undefined,
+      true
+    );
     const listOfLinks =
       content?.links
         .map(
-          (link: { text: string; url: string }) => `${link.text}: ${link.url}`
+          (link: { text: string; url: string }) => `[${link.text}](${link.url})`
         )
         .join("\n") ?? "";
     const fullText = content?.fullText ?? "";

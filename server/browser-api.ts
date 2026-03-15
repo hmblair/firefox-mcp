@@ -128,12 +128,16 @@ export class BrowserAPI {
 
   async getTabContent(
     tabId: number,
-    offset: number
+    offset: number,
+    selector?: string,
+    includeLinks?: boolean
   ): Promise<TabContentExtensionMessage> {
     const correlationId = this.sendMessageToExtension({
       cmd: "get-tab-content",
       tabId,
       offset,
+      selector,
+      includeLinks,
     });
     return await this.waitForResponse(correlationId, "tab-content");
   }
@@ -180,6 +184,39 @@ export class BrowserAPI {
       clearFirst,
     });
     const message = await this.waitForResponse(correlationId, "text-typed");
+    return message.success;
+  }
+
+  async pressKey(
+    tabId: number,
+    key: string,
+    selector?: string
+  ): Promise<boolean> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "press-key",
+      tabId,
+      key,
+      selector,
+    });
+    const message = await this.waitForResponse(correlationId, "key-pressed");
+    return message.success;
+  }
+
+  async selectOption(
+    tabId: number,
+    selector: string,
+    value: string
+  ): Promise<boolean> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "select-option",
+      tabId,
+      selector,
+      value,
+    });
+    const message = await this.waitForResponse(
+      correlationId,
+      "option-selected"
+    );
     return message.success;
   }
 

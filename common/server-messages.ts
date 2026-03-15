@@ -25,6 +25,8 @@ export interface GetTabContentServerMessage extends ServerMessageBase {
   cmd: "get-tab-content";
   tabId: number;
   offset?: number;
+  selector?: string;
+  includeLinks?: boolean;
 }
 
 export interface ReorderTabsServerMessage extends ServerMessageBase {
@@ -57,6 +59,20 @@ export interface TypeIntoFieldServerMessage extends ServerMessageBase {
   clearFirst?: boolean;
 }
 
+export interface PressKeyServerMessage extends ServerMessageBase {
+  cmd: "press-key";
+  tabId: number;
+  key: string;
+  selector?: string;
+}
+
+export interface SelectOptionServerMessage extends ServerMessageBase {
+  cmd: "select-option";
+  tabId: number;
+  selector: string;
+  value: string;
+}
+
 export type ServerMessage =
   | OpenTabServerMessage
   | CloseTabsServerMessage
@@ -67,6 +83,8 @@ export type ServerMessage =
   | FindHighlightServerMessage
   | GetInteractiveElementsServerMessage
   | ClickElementServerMessage
-  | TypeIntoFieldServerMessage;
+  | TypeIntoFieldServerMessage
+  | PressKeyServerMessage
+  | SelectOptionServerMessage;
 
 export type ServerMessageRequest = ServerMessage & { correlationId: string };

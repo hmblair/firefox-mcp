@@ -1,6 +1,28 @@
 import type { ServerMessageRequest } from "../common";
 import { WebsocketClient } from "./client";
 
+function waitForTabLoad(tabId: number, timeoutMs = 30000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      browser.tabs.onUpdated.removeListener(listener);
+      resolve(); // resolve even on timeout — best effort
+    }, timeoutMs);
+
+    function listener(
+      updatedTabId: number,
+      changeInfo: browser.tabs._OnUpdatedChangeInfo
+    ) {
+      if (updatedTabId === tabId && changeInfo.status === "complete") {
+        clearTimeout(timeout);
+        browser.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    }
+
+    browser.tabs.onUpdated.addListener(listener);
+  });
+}
+
 export class MessageHandler {
   private client: WebsocketClient;
 
@@ -23,7 +45,13 @@ export class MessageHandler {
         await this.sendRecentHistory(req.correlationId, req.searchQuery);
         break;
       case "get-tab-content":
-        await this.sendTabsContent(req.correlationId, req.tabId, req.offset);
+        await this.sendTabsContent(
+          req.correlationId,
+          req.tabId,
+          req.offset,
+          req.selector,
+          req.includeLinks
+        );
         break;
       case "reorder-tabs":
         await this.reorderTabs(req.correlationId, req.tabOrder);
@@ -50,6 +78,22 @@ export class MessageHandler {
           req.clearFirst ?? true
         );
         break;
+      case "press-key":
+        await this.pressKey(
+          req.correlationId,
+          req.tabId,
+          req.key,
+          req.selector
+        );
+        break;
+      case "select-option":
+        await this.selectOption(
+          req.correlationId,
+          req.tabId,
+          req.selector,
+          req.value
+        );
+        break;
       default:
         const _exhaustiveCheck: never = req;
         console.error("Invalid message received:", req);
@@ -62,9 +106,11 @@ export class MessageHandler {
       throw new Error("Invalid URL: must use http:// or https://");
     }
 
-    const tab = await browser.tabs.create({
-      url,
-    });
+    const tab = await browser.tabs.create({ url });
+
+    if (tab.id !== undefined) {
+      await waitForTabLoad(tab.id);
+    }
 
     await this.client.sendResourceToServer({
       resource: "opened-tab-id",
@@ -73,7 +119,10 @@ export class MessageHandler {
     });
   }
 
-  private async closeTabs(correlationId: string, tabIds: number[]): Promise<void> {
+  private async closeTabs(
+    correlationId: string,
+    tabIds: number[]
+  ): Promise<void> {
     await browser.tabs.remove(tabIds);
     await this.client.sendResourceToServer({
       resource: "tabs-closed",
@@ -95,9 +144,9 @@ export class MessageHandler {
     searchQuery: string | null = null
   ): Promise<void> {
     const historyItems = await browser.history.search({
-      text: searchQuery ?? "", // Search for all URLs (empty string matches everything)
-      maxResults: 200, // Limit to 200 results
-      startTime: 0, // Search from the beginning of time
+      text: searchQuery ?? "",
+      maxResults: 200,
+      startTime: 0,
     });
     const filteredHistoryItems = historyItems.filter((item) => {
       return !!item.url;
@@ -112,30 +161,43 @@ export class MessageHandler {
   private async sendTabsContent(
     correlationId: string,
     tabId: number,
-    offset?: number
+    offset?: number,
+    selector?: string,
+    includeLinks?: boolean
   ): Promise<void> {
     const MAX_CONTENT_LENGTH = 50_000;
+    const escapedSelector = selector
+      ? selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+      : null;
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
         function getLinks() {
-          const linkElements = document.querySelectorAll('a[href]');
+          ${
+            includeLinks
+              ? `
+          const root = ${escapedSelector ? `document.querySelector('${escapedSelector}') || document.body` : `document.body`};
+          const linkElements = root.querySelectorAll('a[href]');
           return Array.from(linkElements).map(el => ({
             url: el.href,
             text: el.innerText.trim() || el.getAttribute('aria-label') || el.getAttribute('title') || ''
-          })).filter(link => link.text !== '' && link.url.startsWith('https://') && !link.url.includes('#'));
+          })).filter(link => link.text !== '' && link.url.startsWith('http') && !link.url.includes('#'));
+          `
+              : `return [];`
+          }
         }
 
         function getTextContent() {
+          const root = ${escapedSelector ? `document.querySelector('${escapedSelector}')` : `document.body`};
+          if (!root) return { text: '', isTruncated: false, totalLength: 0 };
           let isTruncated = false;
-          let text = document.body.innerText.substring(${offset || 0});
+          let text = root.innerText.substring(${offset || 0});
+          const totalLength = root.innerText.length;
           if (text.length > ${MAX_CONTENT_LENGTH}) {
             text = text.substring(0, ${MAX_CONTENT_LENGTH});
             isTruncated = true;
           }
-          return {
-            text, isTruncated
-          }
+          return { text, isTruncated, totalLength };
         }
 
         const textContent = getTextContent();
@@ -144,7 +206,7 @@ export class MessageHandler {
           links: getLinks(),
           fullText: textContent.text,
           isTruncated: textContent.isTruncated,
-          totalLength: document.body.innerText.length
+          totalLength: textContent.totalLength
         };
       })();
     `,
@@ -161,8 +223,10 @@ export class MessageHandler {
     });
   }
 
-  private async reorderTabs(correlationId: string, tabOrder: number[]): Promise<void> {
-    // Reorder the tabs sequentially
+  private async reorderTabs(
+    correlationId: string,
+    tabOrder: number[]
+  ): Promise<void> {
     for (let newIndex = 0; newIndex < tabOrder.length; newIndex++) {
       const tabId = tabOrder[newIndex];
       await browser.tabs.move(tabId, { index: newIndex });
@@ -184,14 +248,9 @@ export class MessageHandler {
       caseSensitive: false,
     });
 
-    // If there are results, highlight them
     if (findResults.count > 0) {
-      // But first, activate the tab. In firefox, this would also enable
-      // auto-scrolling to the highlighted result.
       await browser.tabs.update(tabId, { active: true });
-      browser.find.highlightResults({
-        tabId,
-      });
+      browser.find.highlightResults({ tabId });
     }
 
     await this.client.sendResourceToServer({
@@ -279,7 +338,9 @@ export class MessageHandler {
     tabId: number,
     selector: string
   ): Promise<void> {
-    const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const escapedSelector = selector
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'");
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
@@ -292,10 +353,22 @@ export class MessageHandler {
       })();
     `,
     });
+
+    const success = !!results[0];
+
+    if (success) {
+      // Wait briefly to see if the click triggered navigation
+      await new Promise((r) => setTimeout(r, 100));
+      const tab = await browser.tabs.get(tabId);
+      if (tab.status === "loading") {
+        await waitForTabLoad(tabId);
+      }
+    }
+
     await this.client.sendResourceToServer({
       resource: "element-clicked",
       correlationId,
-      success: !!results[0],
+      success,
     });
   }
 
@@ -306,7 +379,9 @@ export class MessageHandler {
     text: string,
     clearFirst: boolean
   ): Promise<void> {
-    const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const escapedSelector = selector
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'");
     const escapedText = text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     const results = await browser.tabs.executeScript(tabId, {
       code: `
@@ -326,6 +401,81 @@ export class MessageHandler {
     });
     await this.client.sendResourceToServer({
       resource: "text-typed",
+      correlationId,
+      success: !!results[0],
+    });
+  }
+
+  private async pressKey(
+    correlationId: string,
+    tabId: number,
+    key: string,
+    selector?: string
+  ): Promise<void> {
+    const escapedKey = key.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const escapedSelector = selector
+      ? selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+      : null;
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const target = ${escapedSelector ? `document.querySelector('${escapedSelector}')` : `document.activeElement || document.body`};
+        if (!target) return false;
+        const opts = { key: '${escapedKey}', bubbles: true, cancelable: true };
+        target.dispatchEvent(new KeyboardEvent('keydown', opts));
+        target.dispatchEvent(new KeyboardEvent('keypress', opts));
+        target.dispatchEvent(new KeyboardEvent('keyup', opts));
+        return true;
+      })();
+    `,
+    });
+
+    const success = !!results[0];
+
+    if (success && key === "Enter") {
+      // Enter may trigger navigation — wait if so
+      await new Promise((r) => setTimeout(r, 100));
+      try {
+        const tab = await browser.tabs.get(tabId);
+        if (tab.status === "loading") {
+          await waitForTabLoad(tabId);
+        }
+      } catch {
+        // tab may have been replaced
+      }
+    }
+
+    await this.client.sendResourceToServer({
+      resource: "key-pressed",
+      correlationId,
+      success,
+    });
+  }
+
+  private async selectOption(
+    correlationId: string,
+    tabId: number,
+    selector: string,
+    value: string
+  ): Promise<void> {
+    const escapedSelector = selector
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'");
+    const escapedValue = value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const el = document.querySelector('${escapedSelector}');
+        if (!el || el.tagName !== 'SELECT') return false;
+        el.value = '${escapedValue}';
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "option-selected",
       correlationId,
       success: !!results[0],
     });
