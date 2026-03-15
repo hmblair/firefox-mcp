@@ -2,7 +2,7 @@ import type {
   ExtensionMessage,
   ExtensionError,
   ServerMessageRequest,
-} from "@browser-control-mcp/common";
+} from "../common";
 import { getMessageSignature } from "./auth";
 
 export class WebsocketClient {

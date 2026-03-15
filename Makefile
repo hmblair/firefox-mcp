@@ -1,11 +1,33 @@
-.PHONY: build xpi clean
+VERSION := $(shell node -p "require('./package.json').version")
 
-build:
-	npm run build
+.PHONY: build compile xpi clean tag install uninstall
 
-xpi: build
-	cd firefox-extension && zip -r ../browser-control.xpi manifest.json dist/
+build: compile xpi
+
+compile:
+	@echo "Compiling Firefox MCP v$(VERSION)..."
+	@npm run build
+
+xpi:
+	@rm -rf dist/stage
+	@mkdir -p dist/stage
+	@cp -r extension/manifest.json extension/dist/ dist/stage/
+	@node -e "const m=JSON.parse(require('fs').readFileSync('dist/stage/manifest.json','utf8')); m.version='$(VERSION)'; require('fs').writeFileSync('dist/stage/manifest.json', JSON.stringify(m,null,2)+'\n');"
+	@cd dist/stage && zip -r ../firefox-mcp.xpi . -x "*.DS_Store" -x "*.git*"
+	@rm -rf dist/stage
+	@echo "Built: dist/firefox-mcp.xpi"
+
+tag:
+	@git tag -a "v$(VERSION)" -m "v$(VERSION)"
+	@echo "Tagged v$(VERSION)"
+
+install:
+	@node scripts/install.cjs
+
+uninstall:
+	@node scripts/install.cjs uninstall
 
 clean:
-	rm -f browser-control.xpi
-	rm -rf mcp-server/dist firefox-extension/dist
+	rm -rf dist/
+	rm -rf server/dist/
+	rm -rf extension/dist/

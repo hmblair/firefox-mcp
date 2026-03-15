@@ -7,7 +7,7 @@ import {
   TabContentExtensionMessage,
   ServerMessageRequest,
   ExtensionError,
-} from "@browser-control-mcp/common";
+} from "../common";
 import { isPortInUse } from "./util";
 import { join } from "path";
 import { readFile } from "fs/promises";

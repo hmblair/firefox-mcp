@@ -1,13 +1,34 @@
 {
-  "name": "browser-control-mcp",
+  "name": "firefox-mcp",
   "version": "1.2.0",
-  "private": true,
+  "description": "MCP server for Firefox - enables AI assistants to control the browser",
+  "author": "Hamish Blair",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hmblair/firefox-mcp"
+  },
+  "bin": {
+    "firefox-mcp": "./mcp-bridge.cjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "install-all": "nx run-many --target=install --all --parallel",
-    "build": "nx run-many --target=build --all --parallel",
+    "build:server": "cd server && npx tsc",
+    "build:extension": "cd extension && npx esbuild background.ts --bundle --outfile=dist/background.js",
+    "build": "npm run build:server && npm run build:extension",
     "postbuild": "node scripts/generate-token.js"
   },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "dayjs": "^1.11.13",
+    "ws": "^8.18.1"
+  },
   "devDependencies": {
-    "nx": "20.6.0"
+    "@types/firefox-webext-browser": "^120.0.4",
+    "@types/ws": "^8.18.0",
+    "esbuild": "0.25.1",
+    "typescript": "^5.8.2"
   }
 }

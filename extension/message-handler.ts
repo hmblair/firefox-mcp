@@ -1,4 +1,4 @@
-import type { ServerMessageRequest } from "@browser-control-mcp/common";
+import type { ServerMessageRequest } from "../common";
 import { WebsocketClient } from "./client";
 
 export class MessageHandler {
