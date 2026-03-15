@@ -163,46 +163,14 @@ export class BrowserAPI {
   async clickElement(
     tabId: number,
     selector: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; navigated?: boolean; url?: string; title?: string; error?: string }> {
     const correlationId = this.sendMessageToExtension({
       cmd: "click-element",
       tabId,
       selector,
     });
     const message = await this.waitForResponse(correlationId, "element-clicked");
-    return { success: message.success, error: message.error };
-  }
-
-  async clickElementByText(
-    tabId: number,
-    text: string,
-    tag?: string
-  ): Promise<{
-    success: boolean;
-    clickedText?: string;
-    clickedTag?: string;
-    href?: string;
-    matchCount?: number;
-    error?: string;
-  }> {
-    const correlationId = this.sendMessageToExtension({
-      cmd: "click-element-by-text",
-      tabId,
-      text,
-      tag,
-    });
-    const message = await this.waitForResponse(
-      correlationId,
-      "element-clicked-by-text"
-    );
-    return {
-      success: message.success,
-      clickedText: message.clickedText,
-      clickedTag: message.clickedTag,
-      href: message.href,
-      matchCount: message.matchCount,
-      error: message.error,
-    };
+    return { success: message.success, navigated: message.navigated, url: message.url, title: message.title, error: message.error };
   }
 
   async typeIntoField(

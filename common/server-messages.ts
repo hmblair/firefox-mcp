@@ -68,13 +68,6 @@ export interface SelectOptionServerMessage extends ServerMessageBase {
   value: string;
 }
 
-export interface ClickElementByTextServerMessage extends ServerMessageBase {
-  cmd: "click-element-by-text";
-  tabId: number;
-  text: string;
-  tag?: string;
-}
-
 export interface GetTabInfoServerMessage extends ServerMessageBase {
   cmd: "get-tab-info";
   tabId: number;
@@ -105,7 +98,6 @@ export type ServerMessage =
   | TypeIntoFieldServerMessage
   | PressKeyServerMessage
   | SelectOptionServerMessage
-  | ClickElementByTextServerMessage
   | GetTabInfoServerMessage
   | FillFormServerMessage
   | WaitForSelectorServerMessage;

@@ -212,10 +212,12 @@ mcpServer.tool(
       if (filter) {
         const lower = filter.toLowerCase();
         elements = elements.filter(
-          (el: { label?: string; placeholder?: string; value?: string }) =>
+          (el: { label?: string; placeholder?: string; value?: string; href?: string; context?: string }) =>
             el.label?.toLowerCase().includes(lower) ||
             el.placeholder?.toLowerCase().includes(lower) ||
-            el.value?.toLowerCase().includes(lower)
+            el.value?.toLowerCase().includes(lower) ||
+            el.href?.toLowerCase().includes(lower) ||
+            el.context?.toLowerCase().includes(lower)
         );
       }
       const totalCount = elements.length;
@@ -239,49 +241,16 @@ mcpServer.tool(
     try {
       const result = await browserApi.clickElement(tabId, selector);
       if (result.success) {
-        return toolResponse({ success: true, selector });
+        const data: Record<string, unknown> = { success: true, selector, navigated: result.navigated };
+        if (result.navigated) {
+          data.url = result.url;
+          data.title = result.title;
+        }
+        return toolResponse(data);
       }
       return toolResponse({ success: false, error: result.error || "Unknown error" }, true);
     } catch (error) {
       return toolError("clickElement", error);
-    }
-  }
-);
-
-mcpServer.tool(
-  "clickElementByText",
-  "Click an element by its visible text content (useful when CSS selectors are hard to determine)",
-  {
-    tabId: z.number().describe("The tab ID containing the element"),
-    text: z
-      .string()
-      .describe("The visible text to search for (case-insensitive substring match)"),
-    tag: z
-      .string()
-      .optional()
-      .describe(
-        "Optional: filter by HTML tag name (e.g. 'a', 'button', 'div')"
-      ),
-  },
-  async ({ tabId, text, tag }) => {
-    try {
-      const result = await browserApi.clickElementByText(tabId, text, tag);
-      if (result.success) {
-        const data: Record<string, unknown> = {
-          success: true,
-          clickedTag: result.clickedTag,
-          clickedText: result.clickedText,
-          matchCount: result.matchCount,
-        };
-        if (result.href) data.href = result.href;
-        if (result.matchCount && result.matchCount > 1) {
-          data.warning = `${result.matchCount} elements matched — clicked the most specific one`;
-        }
-        return toolResponse(data);
-      }
-      return toolResponse({ success: false, error: result.error || "Element not found" }, true);
-    } catch (error) {
-      return toolError("clickElementByText", error);
     }
   }
 );

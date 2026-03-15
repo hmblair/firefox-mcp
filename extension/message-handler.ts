@@ -121,14 +121,6 @@ export class MessageHandler {
           req.value
         );
         break;
-      case "click-element-by-text":
-        await this.clickElementByText(
-          req.correlationId,
-          req.tabId,
-          req.text,
-          req.tag
-        );
-        break;
       case "get-tab-info":
         await this.getTabInfo(req.correlationId, req.tabId);
         break;
@@ -354,6 +346,37 @@ export class MessageHandler {
         const seen = new Set();
         const elements = [];
 
+        function getSemanticType(el) {
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'a') return 'link';
+          if (tag === 'button' || el.getAttribute('role') === 'button' || el.hasAttribute('onclick') || el.hasAttribute('tabindex')) return 'button';
+          if (tag === 'textarea') return 'textarea';
+          if (tag === 'select') return 'dropdown';
+          if (tag === 'input') {
+            const t = (el.getAttribute('type') || 'text').toLowerCase();
+            if (t === 'password') return 'password input';
+            if (t === 'checkbox') return 'checkbox';
+            if (t === 'radio') return 'radio';
+            return 'text input';
+          }
+          return 'button';
+        }
+
+        function getNearestHeading(el) {
+          let node = el;
+          for (let i = 0; i < 10 && node; i++) {
+            let sibling = node.previousElementSibling;
+            while (sibling) {
+              if (/^H[1-6]$/.test(sibling.tagName)) {
+                return sibling.textContent.trim().substring(0, 50);
+              }
+              sibling = sibling.previousElementSibling;
+            }
+            node = node.parentElement;
+          }
+          return null;
+        }
+
         for (const el of els) {
           const rect = el.getBoundingClientRect();
           if (rect.width === 0 && rect.height === 0) continue;
@@ -367,7 +390,6 @@ export class MessageHandler {
           } else {
             const tag = el.tagName.toLowerCase();
             const type = el.getAttribute('type');
-            const label = el.getAttribute('aria-label') || el.textContent?.trim().substring(0, 30);
             let s = tag;
             if (type) s += '[type="' + type + '"]';
             if (el.className && typeof el.className === 'string') {
@@ -393,22 +415,34 @@ export class MessageHandler {
           seen.add(selector);
 
           const tag = el.tagName.toLowerCase();
+          const semType = getSemanticType(el);
           const entry = {
             selector: selector,
-            tag: tag,
+            type: semType,
             enabled: !el.disabled,
           };
-          if (el.type) entry.type = el.type;
 
           const label = el.getAttribute('aria-label')
             || (el.labels && el.labels[0]?.textContent?.trim())
             || el.getAttribute('title')
             || (tag === 'a' || tag === 'button' ? el.textContent?.trim().substring(0, 50) : null);
           if (label) entry.label = label;
-          if (el.placeholder) entry.placeholder = el.placeholder;
-          if (el.value && tag !== 'input' || (tag === 'input' && el.type !== 'password')) {
-            if (el.value) entry.value = el.value.substring(0, 100);
+
+          if (tag === 'a' && el.href) entry.href = el.href;
+
+          if (semType === 'checkbox' || semType === 'radio') {
+            entry.value = el.checked ? 'checked' : 'unchecked';
+          } else if (semType === 'dropdown') {
+            const opt = el.options && el.options[el.selectedIndex];
+            if (opt) entry.value = opt.text;
+          } else if (semType !== 'password input' && el.value) {
+            entry.value = el.value.substring(0, 100);
           }
+
+          if (el.placeholder) entry.placeholder = el.placeholder;
+
+          const ctx = getNearestHeading(el);
+          if (ctx) entry.context = ctx;
 
           elements.push(entry);
         }
@@ -429,6 +463,8 @@ export class MessageHandler {
     selector: string
   ): Promise<void> {
     await browser.tabs.update(tabId, { active: true });
+    const tabBefore = await browser.tabs.get(tabId);
+    const urlBefore = tabBefore.url;
     const safeSelector = JSON.stringify(selector);
     const results = await browser.tabs.executeScript(tabId, {
       code: `
@@ -450,77 +486,29 @@ export class MessageHandler {
       error: "Script execution failed",
     };
 
+    let navigated = false;
+    let url: string | undefined;
+    let title: string | undefined;
+
     if (result.success) {
       await waitForPossibleNavigation(tabId);
+      try {
+        const tabAfter = await browser.tabs.get(tabId);
+        url = tabAfter.url;
+        title = tabAfter.title;
+        navigated = url !== urlBefore;
+      } catch {
+        // tab may have closed
+      }
     }
 
     await this.client.sendResourceToServer({
       resource: "element-clicked",
       correlationId,
       success: result.success,
-      error: result.error,
-    });
-  }
-
-  private async clickElementByText(
-    correlationId: string,
-    tabId: number,
-    text: string,
-    tag?: string
-  ): Promise<void> {
-    await browser.tabs.update(tabId, { active: true });
-    const safeText = JSON.stringify(text);
-    const safeTag = tag ? JSON.stringify(tag.toUpperCase()) : "null";
-    const results = await browser.tabs.executeScript(tabId, {
-      code: `
-      (function () {
-        const target = ${safeText}.toLowerCase();
-        const tagFilter = ${safeTag};
-        const all = document.querySelectorAll(tagFilter ? tagFilter.toLowerCase() : '*');
-        const matches = [];
-        for (const el of all) {
-          const elText = (el.innerText || el.textContent || '').trim();
-          if (!elText.toLowerCase().includes(target)) continue;
-          const rect = el.getBoundingClientRect();
-          if (rect.width === 0 && rect.height === 0) continue;
-          if (el.offsetParent === null && el.tagName !== 'BODY') continue;
-          matches.push(el);
-        }
-        if (matches.length === 0) {
-          return { success: false, error: 'No visible element found containing "' + ${safeText} + '"' };
-        }
-        matches.sort((a, b) => {
-          const aChildren = a.querySelectorAll('*').length;
-          const bChildren = b.querySelectorAll('*').length;
-          return aChildren - bChildren;
-        });
-        const el = matches[0];
-        const elText = (el.innerText || el.textContent || '').trim();
-        el.click();
-        const result = { success: true, clickedText: elText.substring(0, 100), clickedTag: el.tagName.toLowerCase(), matchCount: matches.length };
-        if (el.href) result.href = el.href;
-        return result;
-      })();
-    `,
-    });
-
-    const result = results[0] || {
-      success: false,
-      error: "Script execution failed",
-    };
-
-    if (result.success) {
-      await waitForPossibleNavigation(tabId);
-    }
-
-    await this.client.sendResourceToServer({
-      resource: "element-clicked-by-text",
-      correlationId,
-      success: result.success,
-      clickedText: result.clickedText,
-      clickedTag: result.clickedTag,
-      href: result.href,
-      matchCount: result.matchCount,
+      navigated,
+      url,
+      title,
       error: result.error,
     });
   }

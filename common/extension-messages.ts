@@ -47,11 +47,12 @@ export interface TabsClosedExtensionMessage extends ExtensionMessageBase {
 
 export interface InteractiveElement {
   selector: string;
-  tag: string;
-  type?: string;
+  type: string;
   label?: string;
-  placeholder?: string;
+  href?: string;
   value?: string;
+  placeholder?: string;
+  context?: string;
   enabled: boolean;
 }
 
@@ -63,17 +64,9 @@ export interface InteractiveElementsExtensionMessage extends ExtensionMessageBas
 export interface ElementClickedExtensionMessage extends ExtensionMessageBase {
   resource: "element-clicked";
   success: boolean;
-  error?: string;
-}
-
-export interface ElementClickedByTextExtensionMessage
-  extends ExtensionMessageBase {
-  resource: "element-clicked-by-text";
-  success: boolean;
-  clickedText?: string;
-  clickedTag?: string;
-  href?: string;
-  matchCount?: number;
+  navigated?: boolean;
+  url?: string;
+  title?: string;
   error?: string;
 }
 
@@ -122,7 +115,6 @@ export type ExtensionMessage =
   | TextTypedExtensionMessage
   | KeyPressedExtensionMessage
   | OptionSelectedExtensionMessage
-  | ElementClickedByTextExtensionMessage
   | TabInfoExtensionMessage
   | FormFilledExtensionMessage
   | SelectorFoundExtensionMessage;
