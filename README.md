@@ -14,7 +14,8 @@ MCP Client (Claude, etc.) <--stdio--> MCP Server <--WebSocket--> Firefox Extensi
 | `closeTabs` | Close browser tabs by their IDs |
 | `listTabs` | List all open browser tabs |
 | `searchHistory` | Search the browser's recent history |
-| `getTabContent` | Read a webpage's text content and links, optionally scoped to a CSS selector |
+| `getTabContent` | Read a webpage's text content and links, optionally scoped to a CSS selector with a configurable max length |
+| `getPageOutline` | Get the heading structure (h1-h6) of a webpage with CSS selectors for each section |
 | `reorderTabs` | Reorder open browser tabs |
 | `findInTab` | Find and highlight text in a browser tab |
 | `listInteractiveElements` | List interactive elements (buttons, inputs, links) with CSS selectors |

@@ -5,6 +5,7 @@
   "description": "An extension that enables MCP clients to control the browser.",
   "permissions": [
     "tabs",
+    "activeTab",
     "*://*/*",
     "history",
     "find"
