@@ -23,6 +23,18 @@ function waitForTabLoad(tabId: number, timeoutMs = 30000): Promise<void> {
   });
 }
 
+async function waitForPossibleNavigation(tabId: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, 100));
+  try {
+    const tab = await browser.tabs.get(tabId);
+    if (tab.status === "loading") {
+      await waitForTabLoad(tabId);
+    }
+  } catch {
+    // tab may have been replaced
+  }
+}
+
 export class MessageHandler {
   private client: WebsocketClient;
 
@@ -167,42 +179,39 @@ export class MessageHandler {
     includeLinks?: boolean
   ): Promise<void> {
     const MAX_CONTENT_LENGTH = 50_000;
-    const escapedSelector = selector
-      ? selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
-      : null;
+    const safeSelector = selector ? JSON.stringify(selector) : "null";
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
+        const selector = ${safeSelector};
+        const includeLinks = ${!!includeLinks};
+        const offset = ${offset || 0};
+        const maxLen = ${MAX_CONTENT_LENGTH};
+
         function getLinks() {
-          ${
-            includeLinks
-              ? `
-          const root = ${escapedSelector ? `document.querySelector('${escapedSelector}') || document.body` : `document.body`};
+          if (!includeLinks) return [];
+          const root = selector ? (document.querySelector(selector) || document.body) : document.body;
           const linkElements = root.querySelectorAll('a[href]');
           return Array.from(linkElements).map(el => ({
             url: el.href,
             text: el.innerText.trim() || el.getAttribute('aria-label') || el.getAttribute('title') || ''
           })).filter(link => link.text !== '' && link.url.startsWith('http') && !link.url.includes('#'));
-          `
-              : `return [];`
-          }
         }
 
         function getTextContent() {
-          const root = ${escapedSelector ? `document.querySelector('${escapedSelector}')` : `document.body`};
+          const root = selector ? document.querySelector(selector) : document.body;
           if (!root) return { text: '', isTruncated: false, totalLength: 0 };
           let isTruncated = false;
-          let text = root.innerText.substring(${offset || 0});
           const totalLength = root.innerText.length;
-          if (text.length > ${MAX_CONTENT_LENGTH}) {
-            text = text.substring(0, ${MAX_CONTENT_LENGTH});
+          let text = root.innerText.substring(offset);
+          if (text.length > maxLen) {
+            text = text.substring(0, maxLen);
             isTruncated = true;
           }
           return { text, isTruncated, totalLength };
         }
 
         const textContent = getTextContent();
-
         return {
           links: getLinks(),
           fullText: textContent.text,
@@ -339,13 +348,11 @@ export class MessageHandler {
     tabId: number,
     selector: string
   ): Promise<void> {
-    const escapedSelector = selector
-      .replace(/\\/g, "\\\\")
-      .replace(/'/g, "\\'");
+    const safeSelector = JSON.stringify(selector);
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
-        const el = document.querySelector('${escapedSelector}');
+        const el = document.querySelector(${safeSelector});
         if (el) {
           el.click();
           return true;
@@ -358,12 +365,7 @@ export class MessageHandler {
     const success = !!results[0];
 
     if (success) {
-      // Wait briefly to see if the click triggered navigation
-      await new Promise((r) => setTimeout(r, 100));
-      const tab = await browser.tabs.get(tabId);
-      if (tab.status === "loading") {
-        await waitForTabLoad(tabId);
-      }
+      await waitForPossibleNavigation(tabId);
     }
 
     await this.client.sendResourceToServer({
@@ -381,20 +383,19 @@ export class MessageHandler {
     clearFirst: boolean,
     submit: boolean
   ): Promise<void> {
-    const escapedSelector = selector
-      .replace(/\\/g, "\\\\")
-      .replace(/'/g, "\\'");
-    const escapedText = text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const safeSelector = JSON.stringify(selector);
+    const safeText = JSON.stringify(text);
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
-        const el = document.querySelector('${escapedSelector}');
+        const el = document.querySelector(${safeSelector});
         if (!el) return false;
         el.focus();
+        const text = ${safeText};
         if (${clearFirst}) {
           el.value = '';
         }
-        el.value = ${clearFirst ? `'${escapedText}'` : `el.value + '${escapedText}'`};
+        el.value = ${clearFirst} ? text : el.value + text;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         if (${submit}) {
@@ -409,15 +410,7 @@ export class MessageHandler {
     const success = !!results[0];
 
     if (success && submit) {
-      await new Promise((r) => setTimeout(r, 100));
-      try {
-        const tab = await browser.tabs.get(tabId);
-        if (tab.status === "loading") {
-          await waitForTabLoad(tabId);
-        }
-      } catch {
-        // tab may have been replaced
-      }
+      await waitForPossibleNavigation(tabId);
     }
 
     await this.client.sendResourceToServer({
@@ -433,28 +426,22 @@ export class MessageHandler {
     key: string,
     selector?: string
   ): Promise<void> {
-    const escapedKey = key.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-    const escapedSelector = selector
-      ? selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
-      : null;
+    const safeKey = JSON.stringify(key);
+    const safeSelector = selector ? JSON.stringify(selector) : "null";
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
-        const target = ${escapedSelector ? `document.querySelector('${escapedSelector}')` : `document.activeElement || document.body`};
+        const selector = ${safeSelector};
+        const target = selector ? document.querySelector(selector) : (document.activeElement || document.body);
         if (!target) return false;
-        const key = '${escapedKey}';
+        const key = ${safeKey};
         const opts = { key: key, bubbles: true, cancelable: true };
         target.dispatchEvent(new KeyboardEvent('keydown', opts));
         target.dispatchEvent(new KeyboardEvent('keypress', opts));
         target.dispatchEvent(new KeyboardEvent('keyup', opts));
-        // Synthetic keyboard events are not trusted, so they won't trigger
-        // native form submission. If Enter was pressed on a form element,
-        // explicitly submit the form.
         if (key === 'Enter') {
           const form = target.closest ? target.closest('form') : null;
-          if (form) {
-            form.requestSubmit();
-          }
+          if (form) form.requestSubmit();
         }
         return true;
       })();
@@ -464,16 +451,7 @@ export class MessageHandler {
     const success = !!results[0];
 
     if (success && key === "Enter") {
-      // Enter may trigger navigation — wait if so
-      await new Promise((r) => setTimeout(r, 100));
-      try {
-        const tab = await browser.tabs.get(tabId);
-        if (tab.status === "loading") {
-          await waitForTabLoad(tabId);
-        }
-      } catch {
-        // tab may have been replaced
-      }
+      await waitForPossibleNavigation(tabId);
     }
 
     await this.client.sendResourceToServer({
@@ -489,16 +467,14 @@ export class MessageHandler {
     selector: string,
     value: string
   ): Promise<void> {
-    const escapedSelector = selector
-      .replace(/\\/g, "\\\\")
-      .replace(/'/g, "\\'");
-    const escapedValue = value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const safeSelector = JSON.stringify(selector);
+    const safeValue = JSON.stringify(value);
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
-        const el = document.querySelector('${escapedSelector}');
+        const el = document.querySelector(${safeSelector});
         if (!el || el.tagName !== 'SELECT') return false;
-        el.value = '${escapedValue}';
+        el.value = ${safeValue};
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new Event('input', { bubbles: true }));
         return true;
