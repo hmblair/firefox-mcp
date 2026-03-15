@@ -197,6 +197,17 @@ export const getTabContentScript = (
   }
 
   const LANDMARK_SECTION_TAGS = new Set(['NAV', 'ASIDE', 'HEADER', 'FOOTER', 'ARTICLE']);
+  const LANDMARK_ROLE_MAP = { 'navigation': true, 'complementary': true, 'banner': true, 'contentinfo': true };
+
+  function getLandmarkType(el) {
+    if (LANDMARK_SECTION_TAGS.has(el.tagName)) return 'landmark';
+    if (el.tagName === 'FORM') return 'form';
+    const role = el.getAttribute && el.getAttribute('role');
+    if (!role) return null;
+    if (LANDMARK_ROLE_MAP[role]) return 'landmark';
+    if (role === 'form') return 'form';
+    return null;
+  }
 
   const sections = [];
   let budget = maxLen;
@@ -259,7 +270,9 @@ export const getTabContentScript = (
       return;
     }
 
-    if (LANDMARK_SECTION_TAGS.has(tag)) {
+    const landmarkType = getLandmarkType(el);
+
+    if (landmarkType === 'landmark') {
       startSection(getSectionLabel(el), false);
       for (const child of el.childNodes) {
         walkNode(child);
@@ -269,7 +282,7 @@ export const getTabContentScript = (
       return;
     }
 
-    if (tag === 'FORM') {
+    if (landmarkType === 'form') {
       if (currentSection && currentSection.fromHeading) {
         inForm = true;
         for (const child of el.childNodes) {
