@@ -174,7 +174,8 @@ export class BrowserAPI {
     tabId: number,
     selector: string,
     text: string,
-    clearFirst: boolean
+    clearFirst: boolean,
+    submit: boolean
   ): Promise<boolean> {
     const correlationId = this.sendMessageToExtension({
       cmd: "type-into-field",
@@ -182,6 +183,7 @@ export class BrowserAPI {
       selector,
       text,
       clearFirst,
+      submit,
     });
     const message = await this.waitForResponse(correlationId, "text-typed");
     return message.success;

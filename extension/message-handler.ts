@@ -75,7 +75,8 @@ export class MessageHandler {
           req.tabId,
           req.selector,
           req.text,
-          req.clearFirst ?? true
+          req.clearFirst ?? true,
+          req.submit ?? false
         );
         break;
       case "press-key":
@@ -377,7 +378,8 @@ export class MessageHandler {
     tabId: number,
     selector: string,
     text: string,
-    clearFirst: boolean
+    clearFirst: boolean,
+    submit: boolean
   ): Promise<void> {
     const escapedSelector = selector
       .replace(/\\/g, "\\\\")
@@ -395,14 +397,33 @@ export class MessageHandler {
         el.value = ${clearFirst ? `'${escapedText}'` : `el.value + '${escapedText}'`};
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        if (${submit}) {
+          const form = el.closest ? el.closest('form') : null;
+          if (form) form.requestSubmit();
+        }
         return true;
       })();
     `,
     });
+
+    const success = !!results[0];
+
+    if (success && submit) {
+      await new Promise((r) => setTimeout(r, 100));
+      try {
+        const tab = await browser.tabs.get(tabId);
+        if (tab.status === "loading") {
+          await waitForTabLoad(tabId);
+        }
+      } catch {
+        // tab may have been replaced
+      }
+    }
+
     await this.client.sendResourceToServer({
       resource: "text-typed",
       correlationId,
-      success: !!results[0],
+      success,
     });
   }
 

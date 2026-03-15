@@ -259,13 +259,18 @@ mcpServer.tool(
       .boolean()
       .default(true)
       .describe("Clear existing field value before typing (default: true)"),
+    submit: z
+      .boolean()
+      .default(false)
+      .describe("Submit the containing form after typing (default: false)"),
   },
-  async ({ tabId, selector, text, clearFirst }) => {
+  async ({ tabId, selector, text, clearFirst, submit }) => {
     const success = await browserApi.typeIntoField(
       tabId,
       selector,
       text,
-      clearFirst
+      clearFirst,
+      submit
     );
     return {
       content: [

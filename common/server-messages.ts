@@ -57,6 +57,7 @@ export interface TypeIntoFieldServerMessage extends ServerMessageBase {
   selector: string;
   text: string;
   clearFirst?: boolean;
+  submit?: boolean;
 }
 
 export interface PressKeyServerMessage extends ServerMessageBase {
