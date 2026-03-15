@@ -56,11 +56,10 @@ export interface TypeIntoFieldServerMessage extends ServerMessageBase {
   submit?: boolean;
 }
 
-export interface PressKeyServerMessage extends ServerMessageBase {
-  cmd: "press-key";
+export interface ReloadTabServerMessage extends ServerMessageBase {
+  cmd: "reload-tab";
   tabId: number;
-  key: string;
-  selector?: string;
+  bypassCache?: boolean;
 }
 
 export interface SelectOptionServerMessage extends ServerMessageBase {
@@ -104,7 +103,7 @@ export type ServerMessage =
   | GetInteractiveElementsServerMessage
   | ClickElementServerMessage
   | TypeIntoFieldServerMessage
-  | PressKeyServerMessage
+  | ReloadTabServerMessage
   | SelectOptionServerMessage
   | GetTabInfoServerMessage
   | FillFormServerMessage

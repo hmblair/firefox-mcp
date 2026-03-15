@@ -263,28 +263,18 @@ wrapTool(
 );
 
 wrapTool(
-  "pressKey",
-  "Simulate a key press in a browser tab (e.g. Enter, Escape, Tab, ArrowDown)",
+  "reloadTab",
+  "Reload a browser tab. Useful after changing settings or when a page is in a bad state.",
   {
-    tabId: z.number().describe("The tab ID to send the key press to"),
-    key: z
-      .string()
-      .describe(
-        "The key to press (e.g. 'Enter', 'Escape', 'Tab', 'ArrowDown', 'a')"
-      ),
-    selector: z
-      .string()
-      .optional()
-      .describe(
-        "CSS selector of the element to target (defaults to the currently focused element)"
-      ),
+    tabId: z.number().describe("The tab ID to reload"),
+    bypassCache: z
+      .boolean()
+      .default(false)
+      .describe("Bypass the browser cache (hard reload, default: false)"),
   },
-  async ({ tabId, key, selector }) => {
-    const result = await browserApi.pressKey(tabId, key, selector);
-    if (result.success) {
-      return toolResponse({ success: true, key });
-    }
-    return toolResponse({ success: false, error: result.error || `Failed to press "${key}"` }, true);
+  async ({ tabId, bypassCache }) => {
+    await browserApi.reloadTab(tabId, bypassCache);
+    return toolResponse({ success: true, tabId });
   }
 );
 

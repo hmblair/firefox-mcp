@@ -176,19 +176,13 @@ export class BrowserAPI {
     return { success: message.success, error: message.error };
   }
 
-  async pressKey(
-    tabId: number,
-    key: string,
-    selector?: string
-  ): Promise<{ success: boolean; error?: string }> {
+  async reloadTab(tabId: number, bypassCache: boolean): Promise<void> {
     const correlationId = this.sendMessageToExtension({
-      cmd: "press-key",
+      cmd: "reload-tab",
       tabId,
-      key,
-      selector,
+      bypassCache,
     });
-    const message = await this.waitForResponse(correlationId, "key-pressed");
-    return { success: message.success, error: message.error };
+    await this.waitForResponse(correlationId, "tab-reloaded");
   }
 
   async selectOption(

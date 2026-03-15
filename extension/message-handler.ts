@@ -5,7 +5,6 @@ import { getInteractiveElementsScript } from "./injected/get-interactive-element
 import { searchTabContentScript } from "./injected/search-tab-content";
 import { clickElementScript } from "./injected/click-element";
 import { typeIntoFieldScript } from "./injected/type-into-field";
-import { pressKeyScript } from "./injected/press-key";
 import { selectOptionScript } from "./injected/select-option";
 import { fillFormScript } from "./injected/fill-form";
 import { waitForSelectorScript } from "./injected/wait-for-selector";
@@ -114,12 +113,11 @@ export class MessageHandler {
           req.submit ?? false
         );
         break;
-      case "press-key":
-        await this.pressKey(
+      case "reload-tab":
+        await this.reloadTab(
           req.correlationId,
           req.tabId,
-          req.key,
-          req.selector
+          req.bypassCache
         );
         break;
       case "select-option":
@@ -400,28 +398,16 @@ export class MessageHandler {
     });
   }
 
-  private async pressKey(
+  private async reloadTab(
     correlationId: string,
     tabId: number,
-    key: string,
-    selector?: string
+    bypassCache?: boolean
   ): Promise<void> {
-    const results = await this.activateAndExecute(
-      tabId,
-      pressKeyScript(key, selector)
-    );
-
-    const result = results[0] || { success: false, error: 'Script execution failed' };
-
-    if (result.success && key === "Enter") {
-      await waitForPossibleNavigation(tabId);
-    }
-
+    await browser.tabs.reload(tabId, { bypassCache: !!bypassCache });
+    await waitForTabLoad(tabId);
     await this.client.sendResourceToServer({
-      resource: "key-pressed",
+      resource: "tab-reloaded",
       correlationId,
-      success: result.success,
-      error: result.error,
     });
   }
 

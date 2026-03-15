@@ -85,10 +85,8 @@ export interface TextTypedExtensionMessage extends ExtensionMessageBase {
   error?: string;
 }
 
-export interface KeyPressedExtensionMessage extends ExtensionMessageBase {
-  resource: "key-pressed";
-  success: boolean;
-  error?: string;
+export interface TabReloadedExtensionMessage extends ExtensionMessageBase {
+  resource: "tab-reloaded";
 }
 
 export interface OptionSelectedExtensionMessage extends ExtensionMessageBase {
@@ -130,7 +128,7 @@ export type ExtensionMessage =
   | InteractiveElementsExtensionMessage
   | ElementClickedExtensionMessage
   | TextTypedExtensionMessage
-  | KeyPressedExtensionMessage
+  | TabReloadedExtensionMessage
   | OptionSelectedExtensionMessage
   | TabInfoExtensionMessage
   | FormFilledExtensionMessage
