@@ -7,18 +7,11 @@ import { z } from "zod";
 import { BrowserAPI } from "./browser-api";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { readFileSync } from "fs";
-import { join } from "path";
-
 dayjs.extend(relativeTime);
-
-const { version } = JSON.parse(
-  readFileSync(join(__dirname, "..", "..", "..", "package.json"), "utf8")
-);
 
 const mcpServer = new McpServer({
   name: "firefox-mcp",
-  version,
+  version: process.env.MCP_VERSION || "0.0.0",
 });
 
 mcpServer.tool(
