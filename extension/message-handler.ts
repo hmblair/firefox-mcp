@@ -240,7 +240,7 @@ export class MessageHandler {
         const offset = ${offset || 0};
         const maxLen = ${MAX_CONTENT_LENGTH};
 
-        const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'SVG', 'TEMPLATE']);
+        const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'SVG', 'TEMPLATE', 'SELECT']);
         const BLOCK_TAGS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'ASIDE', 'MAIN', 'NAV',
           'HEADER', 'FOOTER', 'FORM', 'FIELDSET', 'TABLE', 'UL', 'OL', 'DL', 'BLOCKQUOTE',
           'PRE', 'FIGURE', 'FIGCAPTION', 'DETAILS', 'SUMMARY', 'ADDRESS']);
