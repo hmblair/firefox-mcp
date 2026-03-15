@@ -59,6 +59,7 @@ export interface InteractiveElement {
   value?: string;
   placeholder?: string;
   context?: string;
+  name?: string;
   enabled: boolean;
   options?: { value: string; text: string }[];
   optionsTruncated?: boolean;
@@ -81,11 +82,13 @@ export interface ElementClickedExtensionMessage extends ExtensionMessageBase {
 export interface TextTypedExtensionMessage extends ExtensionMessageBase {
   resource: "text-typed";
   success: boolean;
+  error?: string;
 }
 
 export interface KeyPressedExtensionMessage extends ExtensionMessageBase {
   resource: "key-pressed";
   success: boolean;
+  error?: string;
 }
 
 export interface OptionSelectedExtensionMessage extends ExtensionMessageBase {

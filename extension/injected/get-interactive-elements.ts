@@ -64,6 +64,7 @@ export const getInteractiveElementsScript = () => `
     if (label) entry.label = label;
 
     if (tag === 'a' && el.href) entry.href = el.href;
+    if (el.name) entry.name = el.name;
 
     if (semType === 'checkbox' || semType === 'radio') {
       entry.value = el.checked ? 'checked' : 'unchecked';

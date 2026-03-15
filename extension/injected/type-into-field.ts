@@ -6,7 +6,7 @@ export const typeIntoFieldScript = (
 ) => `
 (function() {
   const el = document.querySelector(${JSON.stringify(selector)});
-  if (!el) return false;
+  if (!el) return { success: false, error: 'No element found matching "' + ${JSON.stringify(selector)} + '"' };
   el.focus();
   const text = ${JSON.stringify(text)};
   if (${clearFirst}) {
@@ -19,6 +19,6 @@ export const typeIntoFieldScript = (
     const form = el.closest ? el.closest('form') : null;
     if (form) form.requestSubmit();
   }
-  return true;
+  return { success: true };
 })();
 `;

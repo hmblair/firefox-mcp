@@ -50,7 +50,10 @@ export const getTabContentScript = (
 
     if (tag === 'SELECT') {
       const opt = el.options && el.options[el.selectedIndex];
-      return opt ? '[dropdown: ' + opt.text.trim() + ']' : '[dropdown]';
+      if (!opt) return '[dropdown]';
+      const text = opt.text.trim();
+      const val = opt.value;
+      return text !== val ? '[dropdown: ' + text + ' (' + val + ')]' : '[dropdown: ' + text + ']';
     }
 
     if (tag === 'LI') {

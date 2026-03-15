@@ -18,6 +18,11 @@ export const fillFormScript = (
         el.checked = field.checked;
       } else if (field.value !== undefined) {
         el.value = field.value;
+        if (el.tagName === 'SELECT' && el.value !== field.value) {
+          const available = Array.from(el.options).map(o => o.value).slice(0, 20);
+          results.push({ selector: field.selector, success: false, error: 'Value "' + field.value + '" is not a valid option. Available: ' + JSON.stringify(available) });
+          continue;
+        }
       }
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));

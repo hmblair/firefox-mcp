@@ -127,7 +127,8 @@ export class MessageHandler {
           req.correlationId,
           req.tabId,
           req.selector,
-          req.value
+          req.value,
+          req.values
         );
         break;
       case "get-tab-info":
@@ -385,16 +386,17 @@ export class MessageHandler {
       typeIntoFieldScript(selector, text, clearFirst, submit)
     );
 
-    const success = !!results[0];
+    const result = results[0] || { success: false, error: 'Script execution failed' };
 
-    if (success && submit) {
+    if (result.success && submit) {
       await waitForPossibleNavigation(tabId);
     }
 
     await this.client.sendResourceToServer({
       resource: "text-typed",
       correlationId,
-      success,
+      success: result.success,
+      error: result.error,
     });
   }
 
@@ -409,16 +411,17 @@ export class MessageHandler {
       pressKeyScript(key, selector)
     );
 
-    const success = !!results[0];
+    const result = results[0] || { success: false, error: 'Script execution failed' };
 
-    if (success && key === "Enter") {
+    if (result.success && key === "Enter") {
       await waitForPossibleNavigation(tabId);
     }
 
     await this.client.sendResourceToServer({
       resource: "key-pressed",
       correlationId,
-      success,
+      success: result.success,
+      error: result.error,
     });
   }
 
@@ -503,11 +506,12 @@ export class MessageHandler {
     correlationId: string,
     tabId: number,
     selector: string,
-    value: string
+    value: string,
+    values?: string[]
   ): Promise<void> {
     const results = await this.activateAndExecute(
       tabId,
-      selectOptionScript(selector, value)
+      selectOptionScript(selector, value, values)
     );
     const result = results[0] || { success: false, error: 'Script execution failed' };
     await this.client.sendResourceToServer({

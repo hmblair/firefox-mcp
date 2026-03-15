@@ -68,6 +68,7 @@ export interface SelectOptionServerMessage extends ServerMessageBase {
   tabId: number;
   selector: string;
   value: string;
+  values?: string[];
 }
 
 export interface GetTabInfoServerMessage extends ServerMessageBase {

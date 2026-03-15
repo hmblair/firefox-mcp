@@ -163,7 +163,7 @@ export class BrowserAPI {
     text: string,
     clearFirst: boolean,
     submit: boolean
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
     const correlationId = this.sendMessageToExtension({
       cmd: "type-into-field",
       tabId,
@@ -173,14 +173,14 @@ export class BrowserAPI {
       submit,
     });
     const message = await this.waitForResponse(correlationId, "text-typed");
-    return message.success;
+    return { success: message.success, error: message.error };
   }
 
   async pressKey(
     tabId: number,
     key: string,
     selector?: string
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
     const correlationId = this.sendMessageToExtension({
       cmd: "press-key",
       tabId,
@@ -188,19 +188,21 @@ export class BrowserAPI {
       selector,
     });
     const message = await this.waitForResponse(correlationId, "key-pressed");
-    return message.success;
+    return { success: message.success, error: message.error };
   }
 
   async selectOption(
     tabId: number,
     selector: string,
-    value: string
+    value: string,
+    values?: string[]
   ): Promise<{ success: boolean; error?: string }> {
     const correlationId = this.sendMessageToExtension({
       cmd: "select-option",
       tabId,
       selector,
       value,
+      values,
     });
     const message = await this.waitForResponse(
       correlationId,

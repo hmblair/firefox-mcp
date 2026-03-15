@@ -248,17 +248,17 @@ wrapTool(
       .describe("Submit the containing form after typing (default: false)"),
   },
   async ({ tabId, selector, text, clearFirst, submit }) => {
-    const success = await browserApi.typeIntoField(
+    const result = await browserApi.typeIntoField(
       tabId,
       selector,
       text,
       clearFirst,
       submit
     );
-    if (success) {
+    if (result.success) {
       return toolResponse({ success: true, selector });
     }
-    return toolResponse({ success: false, error: `No element found matching "${selector}"` }, true);
+    return toolResponse({ success: false, error: result.error || `No element found matching "${selector}"` }, true);
   }
 );
 
@@ -280,28 +280,32 @@ wrapTool(
       ),
   },
   async ({ tabId, key, selector }) => {
-    const success = await browserApi.pressKey(tabId, key, selector);
-    if (success) {
+    const result = await browserApi.pressKey(tabId, key, selector);
+    if (result.success) {
       return toolResponse({ success: true, key });
     }
-    return toolResponse({ success: false, error: `Failed to press "${key}"` }, true);
+    return toolResponse({ success: false, error: result.error || `Failed to press "${key}"` }, true);
   }
 );
 
 wrapTool(
   "selectOption",
-  "Select an option in a <select> dropdown by value",
+  "Select an option in a <select> dropdown by value. For multi-select elements, use the values parameter to select multiple options.",
   {
     tabId: z.number().describe("The tab ID containing the dropdown"),
     selector: z
       .string()
       .describe("CSS selector of the <select> element"),
     value: z.string().describe("The value attribute of the option to select"),
+    values: z
+      .array(z.string())
+      .optional()
+      .describe("For multi-select: array of values to select (overrides value)"),
   },
-  async ({ tabId, selector, value }) => {
-    const result = await browserApi.selectOption(tabId, selector, value);
+  async ({ tabId, selector, value, values }) => {
+    const result = await browserApi.selectOption(tabId, selector, value, values);
     if (result.success) {
-      return toolResponse({ success: true, selector, value });
+      return toolResponse({ success: true, selector, ...(values ? { values } : { value }) });
     }
     return toolResponse({ success: false, error: result.error || `No <select> element found matching "${selector}"` }, true);
   }

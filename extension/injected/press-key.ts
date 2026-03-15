@@ -2,7 +2,7 @@ export const pressKeyScript = (key: string, selector?: string) => `
 (function() {
   const selector = ${selector ? JSON.stringify(selector) : "null"};
   const target = selector ? document.querySelector(selector) : (document.activeElement || document.body);
-  if (!target) return false;
+  if (!target) return { success: false, error: 'No element found matching "' + (selector || '') + '"' };
   const key = ${JSON.stringify(key)};
   const opts = { key: key, bubbles: true, cancelable: true };
   target.dispatchEvent(new KeyboardEvent('keydown', opts));
@@ -12,6 +12,6 @@ export const pressKeyScript = (key: string, selector?: string) => `
     const form = target.closest ? target.closest('form') : null;
     if (form) form.requestSubmit();
   }
-  return true;
+  return { success: true };
 })();
 `;
