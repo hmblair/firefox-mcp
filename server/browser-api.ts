@@ -28,9 +28,10 @@ export class BrowserAPI {
   private ws: WebSocket | null = null;
   private wsServer: WebSocket.Server | null = null;
   private sharedSecret: string | null = null;
+  private hasConnected = false;
+  private hasDisconnected = false;
+  private hadSignatureMismatch = false;
 
-  // Map to persist the request to the extension. It maps the request correlationId
-  // to a resolver, fulfulling a promise created when sending a message to the extension.
   private extensionRequestMap: Map<
     string,
     ExtensionRequestResolver<ExtensionMessage["resource"]>
@@ -61,6 +62,16 @@ export class BrowserAPI {
     });
     this.wsServer.on("connection", async (connection) => {
       this.ws = connection;
+      this.hasConnected = true;
+      this.hasDisconnected = false;
+      this.hadSignatureMismatch = false;
+      console.error("Firefox extension connected");
+
+      this.ws.on("close", () => {
+        this.hasDisconnected = true;
+        this.ws = null;
+        console.error("Firefox extension disconnected");
+      });
 
       this.ws.on("message", (message) => {
         const decoded = JSON.parse(message.toString());
@@ -70,7 +81,8 @@ export class BrowserAPI {
         }
         const signature = this.createSignature(JSON.stringify(decoded.payload));
         if (signature !== decoded.signature) {
-          console.error("Invalid message signature");
+          this.hadSignatureMismatch = true;
+          console.error("Invalid message signature — shared secret mismatch. Rebuild the project and reload the extension.");
           return;
         }
         this.handleDecodedExtensionMessage(decoded.payload);
@@ -257,9 +269,20 @@ export class BrowserAPI {
 
   private sendMessageToExtension(message: ServerMessage): string {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error(
-        "Firefox extension is not connected. Make sure the extension is loaded in Firefox and Firefox is running."
-      );
+      if (this.hadSignatureMismatch) {
+        throw new Error(
+          "Firefox extension connected but has a mismatched shared secret. Rebuild the project (make build) and reload the extension in about:debugging."
+        );
+      } else if (this.hasDisconnected) {
+        throw new Error(
+          "Firefox extension was connected but disconnected. Check that Firefox is still running and reload the extension in about:debugging."
+        );
+      } else if (!this.hasConnected) {
+        throw new Error(
+          "Firefox extension has not connected. Make sure Firefox is running and the extension is loaded (about:debugging > Load Temporary Add-on)."
+        );
+      }
+      throw new Error("Firefox extension is not connected.");
     }
 
     const correlationId = Math.random().toString(36).substring(2);
