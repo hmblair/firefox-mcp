@@ -9,6 +9,11 @@
         "history",
         "find"
     ],
+    "browser_specific_settings": {
+      "gecko": {
+        "id": "browser-control-mcp@local"
+      }
+    },
     "background": {
       "scripts": ["dist/background.js"]
     }
