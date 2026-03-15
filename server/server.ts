@@ -13,7 +13,7 @@ import { join } from "path";
 dayjs.extend(relativeTime);
 
 const { version } = JSON.parse(
-  readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")
+  readFileSync(join(__dirname, "..", "..", "..", "package.json"), "utf8")
 );
 
 const mcpServer = new McpServer({
