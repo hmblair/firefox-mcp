@@ -1,6 +1,6 @@
 {
   "name": "firefox-mcp",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "MCP server for Firefox - enables AI assistants to control the browser",
   "author": "Hamish Blair",
   "license": "MIT",
