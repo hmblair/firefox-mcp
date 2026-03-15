@@ -2,9 +2,11 @@ export interface ServerMessageBase {
   cmd: string;
 }
 
-export interface OpenTabServerMessage extends ServerMessageBase {
-  cmd: "open-tab";
+export interface OpenLinkServerMessage extends ServerMessageBase {
+  cmd: "open-link";
   url: string;
+  tabId?: number;
+  newTab?: boolean;
 }
 
 export interface CloseTabsServerMessage extends ServerMessageBase {
@@ -81,8 +83,15 @@ export interface SelectOptionServerMessage extends ServerMessageBase {
   value: string;
 }
 
+export interface ClickElementByTextServerMessage extends ServerMessageBase {
+  cmd: "click-element-by-text";
+  tabId: number;
+  text: string;
+  tag?: string;
+}
+
 export type ServerMessage =
-  | OpenTabServerMessage
+  | OpenLinkServerMessage
   | CloseTabsServerMessage
   | GetTabListServerMessage
   | GetBrowserRecentHistoryServerMessage
@@ -94,6 +103,7 @@ export type ServerMessage =
   | ClickElementServerMessage
   | TypeIntoFieldServerMessage
   | PressKeyServerMessage
-  | SelectOptionServerMessage;
+  | SelectOptionServerMessage
+  | ClickElementByTextServerMessage;
 
 export type ServerMessageRequest = ServerMessage & { correlationId: string };

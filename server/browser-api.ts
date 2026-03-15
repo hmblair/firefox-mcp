@@ -102,10 +102,16 @@ export class BrowserAPI {
     return this.wsServer?.options.port;
   }
 
-  async openTab(url: string): Promise<number | undefined> {
+  async openLink(
+    url: string,
+    tabId?: number,
+    newTab?: boolean
+  ): Promise<number | undefined> {
     const correlationId = this.sendMessageToExtension({
-      cmd: "open-tab",
+      cmd: "open-link",
       url,
+      tabId,
+      newTab,
     });
     const message = await this.waitForResponse(correlationId, "opened-tab-id");
     return message.tabId;
@@ -174,14 +180,47 @@ export class BrowserAPI {
     return message.elements;
   }
 
-  async clickElement(tabId: number, selector: string): Promise<boolean> {
+  async clickElement(
+    tabId: number,
+    selector: string
+  ): Promise<{ success: boolean; error?: string }> {
     const correlationId = this.sendMessageToExtension({
       cmd: "click-element",
       tabId,
       selector,
     });
     const message = await this.waitForResponse(correlationId, "element-clicked");
-    return message.success;
+    return { success: message.success, error: message.error };
+  }
+
+  async clickElementByText(
+    tabId: number,
+    text: string,
+    tag?: string
+  ): Promise<{
+    success: boolean;
+    clickedText?: string;
+    clickedTag?: string;
+    href?: string;
+    error?: string;
+  }> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "click-element-by-text",
+      tabId,
+      text,
+      tag,
+    });
+    const message = await this.waitForResponse(
+      correlationId,
+      "element-clicked-by-text"
+    );
+    return {
+      success: message.success,
+      clickedText: message.clickedText,
+      clickedTag: message.clickedTag,
+      href: message.href,
+      error: message.error,
+    };
   }
 
   async typeIntoField(

@@ -44,8 +44,13 @@ export class MessageHandler {
 
   public async handleDecodedMessage(req: ServerMessageRequest): Promise<void> {
     switch (req.cmd) {
-      case "open-tab":
-        await this.openUrl(req.correlationId, req.url);
+      case "open-link":
+        await this.openLink(
+          req.correlationId,
+          req.url,
+          req.tabId,
+          req.newTab
+        );
         break;
       case "close-tabs":
         await this.closeTabs(req.correlationId, req.tabIds);
@@ -112,28 +117,62 @@ export class MessageHandler {
           req.value
         );
         break;
+      case "click-element-by-text":
+        await this.clickElementByText(
+          req.correlationId,
+          req.tabId,
+          req.text,
+          req.tag
+        );
+        break;
       default:
         const _exhaustiveCheck: never = req;
         console.error("Invalid message received:", req);
     }
   }
 
-  private async openUrl(correlationId: string, url: string): Promise<void> {
+  private async openLink(
+    correlationId: string,
+    url: string,
+    tabId?: number,
+    newTab?: boolean
+  ): Promise<void> {
     if (!url.startsWith("https://") && !url.startsWith("http://")) {
       console.error("Invalid URL:", url);
       throw new Error("Invalid URL: must use http:// or https://");
     }
 
-    const tab = await browser.tabs.create({ url });
+    let resultTabId: number | undefined;
 
-    if (tab.id !== undefined) {
-      await waitForTabLoad(tab.id);
+    if (newTab) {
+      const tab = await browser.tabs.create({ url });
+      resultTabId = tab.id;
+    } else {
+      let targetTabId = tabId;
+      if (targetTabId === undefined) {
+        const activeTabs = await browser.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        targetTabId = activeTabs[0]?.id;
+      }
+      if (targetTabId === undefined) {
+        const tab = await browser.tabs.create({ url });
+        resultTabId = tab.id;
+      } else {
+        await browser.tabs.update(targetTabId, { url, active: true });
+        resultTabId = targetTabId;
+      }
+    }
+
+    if (resultTabId !== undefined) {
+      await waitForTabLoad(resultTabId);
     }
 
     await this.client.sendResourceToServer({
       resource: "opened-tab-id",
       correlationId,
-      tabId: tab.id,
+      tabId: resultTabId,
     });
   }
 
@@ -407,30 +446,88 @@ export class MessageHandler {
     tabId: number,
     selector: string
   ): Promise<void> {
+    await browser.tabs.update(tabId, { active: true });
     const safeSelector = JSON.stringify(selector);
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
         const el = document.querySelector(${safeSelector});
-        if (el) {
-          el.click();
-          return true;
-        }
-        return false;
+        if (!el) return { success: false, error: "Element not found" };
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return { success: false, error: "Element not visible (zero dimensions)" };
+        if (el.offsetParent === null && el.tagName !== 'BODY') return { success: false, error: "Element not visible (hidden)" };
+        if (el.disabled) return { success: false, error: "Element is disabled" };
+        el.click();
+        return { success: true };
       })();
     `,
     });
 
-    const success = !!results[0];
+    const result = results[0] || {
+      success: false,
+      error: "Script execution failed",
+    };
 
-    if (success) {
+    if (result.success) {
       await waitForPossibleNavigation(tabId);
     }
 
     await this.client.sendResourceToServer({
       resource: "element-clicked",
       correlationId,
-      success,
+      success: result.success,
+      error: result.error,
+    });
+  }
+
+  private async clickElementByText(
+    correlationId: string,
+    tabId: number,
+    text: string,
+    tag?: string
+  ): Promise<void> {
+    await browser.tabs.update(tabId, { active: true });
+    const safeText = JSON.stringify(text);
+    const safeTag = tag ? JSON.stringify(tag.toUpperCase()) : "null";
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const target = ${safeText}.toLowerCase();
+        const tagFilter = ${safeTag};
+        const all = document.querySelectorAll(tagFilter ? tagFilter.toLowerCase() : '*');
+        for (const el of all) {
+          const elText = (el.innerText || el.textContent || '').trim();
+          if (!elText.toLowerCase().includes(target)) continue;
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          if (el.offsetParent === null && el.tagName !== 'BODY') continue;
+          el.click();
+          const result = { success: true, clickedText: elText.substring(0, 100), clickedTag: el.tagName.toLowerCase() };
+          if (el.href) result.href = el.href;
+          return result;
+        }
+        return { success: false, error: 'No visible element found containing "' + ${safeText} + '"' };
+      })();
+    `,
+    });
+
+    const result = results[0] || {
+      success: false,
+      error: "Script execution failed",
+    };
+
+    if (result.success) {
+      await waitForPossibleNavigation(tabId);
+    }
+
+    await this.client.sendResourceToServer({
+      resource: "element-clicked-by-text",
+      correlationId,
+      success: result.success,
+      clickedText: result.clickedText,
+      clickedTag: result.clickedTag,
+      href: result.href,
+      error: result.error,
     });
   }
 
@@ -442,6 +539,7 @@ export class MessageHandler {
     clearFirst: boolean,
     submit: boolean
   ): Promise<void> {
+    await browser.tabs.update(tabId, { active: true });
     const safeSelector = JSON.stringify(selector);
     const safeText = JSON.stringify(text);
     const results = await browser.tabs.executeScript(tabId, {
@@ -485,6 +583,7 @@ export class MessageHandler {
     key: string,
     selector?: string
   ): Promise<void> {
+    await browser.tabs.update(tabId, { active: true });
     const safeKey = JSON.stringify(key);
     const safeSelector = selector ? JSON.stringify(selector) : "null";
     const results = await browser.tabs.executeScript(tabId, {
@@ -526,6 +625,7 @@ export class MessageHandler {
     selector: string,
     value: string
   ): Promise<void> {
+    await browser.tabs.update(tabId, { active: true });
     const safeSelector = JSON.stringify(selector);
     const safeValue = JSON.stringify(value);
     const results = await browser.tabs.executeScript(tabId, {

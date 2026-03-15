@@ -77,6 +77,17 @@ export interface InteractiveElementsExtensionMessage extends ExtensionMessageBas
 export interface ElementClickedExtensionMessage extends ExtensionMessageBase {
   resource: "element-clicked";
   success: boolean;
+  error?: string;
+}
+
+export interface ElementClickedByTextExtensionMessage
+  extends ExtensionMessageBase {
+  resource: "element-clicked-by-text";
+  success: boolean;
+  clickedText?: string;
+  clickedTag?: string;
+  href?: string;
+  error?: string;
 }
 
 export interface TextTypedExtensionMessage extends ExtensionMessageBase {
@@ -118,7 +129,8 @@ export type ExtensionMessage =
   | TextTypedExtensionMessage
   | KeyPressedExtensionMessage
   | OptionSelectedExtensionMessage
-  | PageOutlineExtensionMessage;
+  | PageOutlineExtensionMessage
+  | ElementClickedByTextExtensionMessage;
 
 export interface ExtensionError {
   correlationId: string;

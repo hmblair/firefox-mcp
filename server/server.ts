@@ -15,23 +15,35 @@ const mcpServer = new McpServer({
 });
 
 mcpServer.tool(
-  "openTab",
-  "Open a URL in a new browser tab",
-  { url: z.string().describe("The URL to open") },
-  async ({ url }) => {
-    const openedTabId = await browserApi.openTab(url);
-    if (openedTabId !== undefined) {
+  "openLink",
+  "Open a URL in the browser. By default navigates the active tab. Use newTab=true to open in a new tab.",
+  {
+    url: z.string().describe("The URL to open"),
+    tabId: z
+      .number()
+      .optional()
+      .describe("Tab ID to navigate (defaults to the active tab)"),
+    newTab: z
+      .boolean()
+      .default(false)
+      .describe("Open in a new tab instead of navigating an existing one (default: false)"),
+  },
+  async ({ url, tabId, newTab }) => {
+    const resultTabId = await browserApi.openLink(url, tabId, newTab);
+    if (resultTabId !== undefined) {
       return {
         content: [
           {
             type: "text",
-            text: `${url} opened in tab id ${openedTabId}`,
+            text: newTab
+              ? `${url} opened in new tab ${resultTabId}`
+              : `Tab ${resultTabId} navigated to ${url}`,
           },
         ],
       };
     } else {
       return {
-        content: [{ type: "text", text: "Failed to open tab", isError: true }],
+        content: [{ type: "text", text: "Failed to open URL", isError: true }],
       };
     }
   }
@@ -52,9 +64,22 @@ mcpServer.tool(
 mcpServer.tool(
   "listTabs",
   "List all open browser tabs",
-  {},
-  async () => {
-    const openTabs = await browserApi.getTabList();
+  {
+    query: z
+      .string()
+      .optional()
+      .describe("Filter tabs by substring match on URL or title"),
+  },
+  async ({ query }) => {
+    let openTabs = await browserApi.getTabList();
+    if (query) {
+      const lower = query.toLowerCase();
+      openTabs = openTabs.filter(
+        (tab) =>
+          tab.url?.toLowerCase().includes(lower) ||
+          tab.title?.toLowerCase().includes(lower)
+      );
+    }
     return {
       content: [
         {
@@ -257,13 +282,35 @@ mcpServer.tool(
 mcpServer.tool(
   "listInteractiveElements",
   "List interactive elements on a webpage (buttons, inputs, links, selects, textareas) with CSS selectors",
-  { tabId: z.number().describe("The tab ID to inspect") },
-  async ({ tabId }) => {
-    const elements = await browserApi.getInteractiveElements(tabId);
+  {
+    tabId: z.number().describe("The tab ID to inspect"),
+    filter: z
+      .string()
+      .optional()
+      .describe(
+        "Filter elements by text substring match on label, placeholder, or value"
+      ),
+  },
+  async ({ tabId, filter }) => {
+    let elements = await browserApi.getInteractiveElements(tabId);
+    if (filter) {
+      const lower = filter.toLowerCase();
+      elements = elements.filter(
+        (el: { label?: string; placeholder?: string; value?: string }) =>
+          el.label?.toLowerCase().includes(lower) ||
+          el.placeholder?.toLowerCase().includes(lower) ||
+          el.value?.toLowerCase().includes(lower)
+      );
+    }
     if (elements.length === 0) {
       return {
         content: [
-          { type: "text", text: "No interactive elements found on the page" },
+          {
+            type: "text",
+            text: filter
+              ? `No interactive elements matching "${filter}" found`
+              : "No interactive elements found on the page",
+          },
         ],
       };
     }
@@ -286,15 +333,59 @@ mcpServer.tool(
     selector: z.string().describe("CSS selector of the element to click"),
   },
   async ({ tabId, selector }) => {
-    const success = await browserApi.clickElement(tabId, selector);
+    const result = await browserApi.clickElement(tabId, selector);
     return {
       content: [
         {
           type: "text",
-          text: success
+          text: result.success
             ? `Clicked element matching "${selector}"`
-            : `No element found matching "${selector}"`,
-          isError: !success,
+            : `Failed to click "${selector}": ${result.error || "unknown error"}`,
+          isError: !result.success,
+        },
+      ],
+    };
+  }
+);
+
+mcpServer.tool(
+  "clickElementByText",
+  "Click an element by its visible text content (useful when CSS selectors are hard to determine)",
+  {
+    tabId: z.number().describe("The tab ID containing the element"),
+    text: z
+      .string()
+      .describe("The visible text to search for (case-insensitive substring match)"),
+    tag: z
+      .string()
+      .optional()
+      .describe(
+        "Optional: filter by HTML tag name (e.g. 'a', 'button', 'div')"
+      ),
+  },
+  async ({ tabId, text, tag }) => {
+    const result = await browserApi.clickElementByText(tabId, text, tag);
+    if (result.success) {
+      const response: Record<string, string> = {
+        clicked: `<${result.clickedTag}>`,
+        text: result.clickedText || "",
+      };
+      if (result.href) response.href = result.href;
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(response, null, 2),
+          },
+        ],
+      };
+    }
+    return {
+      content: [
+        {
+          type: "text",
+          text: result.error || "Element not found",
+          isError: true,
         },
       ],
     };
