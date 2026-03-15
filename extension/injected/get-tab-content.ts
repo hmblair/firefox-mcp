@@ -150,6 +150,11 @@ export const getTabContentScript = (
       const ariaLabel = el.getAttribute('aria-label');
       if (ariaLabel) {
         label += ': ' + ariaLabel.substring(0, 50);
+      } else {
+        const ph = el.querySelector('input[placeholder], textarea[placeholder]');
+        if (ph) {
+          label += ': ' + ph.getAttribute('placeholder').substring(0, 50);
+        }
       }
     }
     return label;
