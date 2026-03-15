@@ -64,7 +64,7 @@ To install permanently, use the built XPI at `dist/firefox-mcp.xpi` (requires si
 
 ## Security
 
-The MCP server and extension communicate over a local WebSocket connection authenticated with HMAC-SHA256 signatures using a shared secret generated at build time.
+The MCP server and extension communicate over a localhost-only WebSocket connection. Only processes on the local machine can connect.
 
 ## Development
 
@@ -82,7 +82,6 @@ extension/          Firefox extension source (TypeScript)
   background.ts     Service worker entry point
   client.ts         WebSocket client
   message-handler.ts  Handles server commands
-  auth.ts           HMAC-SHA256 message signing
 server/             MCP server source (TypeScript)
   server.ts         MCP tool definitions and entry point
   browser-api.ts    WebSocket communication with extension
@@ -93,6 +92,5 @@ common/             Shared TypeScript interfaces
 mcp-bridge.cjs      Executable entry point
 scripts/
   install.cjs       MCP client config installer
-  generate-token.js Shared secret generator
 Makefile            Build and install targets
 ```

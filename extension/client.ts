@@ -3,19 +3,16 @@ import type {
   ExtensionError,
   ServerMessageRequest,
 } from "../common";
-import { getMessageSignature } from "./auth";
 
 export class WebsocketClient {
   private socket: WebSocket | null = null;
   private readonly port: number;
-  private readonly secret: string;
   private reconnectInterval: number = 2000; // 2 seconds
   private reconnectTimer: number | null = null;
   private messageCallback: ((data: ServerMessageRequest) => void) | null = null;
 
-  constructor(port: number, secret: string) {
+  constructor(port: number) {
     this.port = port;
-    this.secret = secret;
   }
 
   public connect(): void {
@@ -36,20 +33,8 @@ export class WebsocketClient {
         return;
       }
       try {
-        const signedMessage = JSON.parse(event.data);
-        const messageSig = await getMessageSignature(
-          JSON.stringify(signedMessage.payload),
-          this.secret
-        );
-        if (messageSig.length === 0 || messageSig !== signedMessage.signature) {
-          console.error("Invalid message signature");
-          await this.sendErrorToServer(
-            signedMessage.payload.correlationId,
-            "Invalid message signature - extension and server not in sync"
-          );
-          return;
-        }
-        this.messageCallback(signedMessage.payload);
+        const message = JSON.parse(event.data);
+        this.messageCallback(message);
       } catch (error) {
         console.error("Failed to parse message:", error);
       }
@@ -86,14 +71,7 @@ export class WebsocketClient {
       console.warn(`[client] Dropping ${resource.resource} response (id: ${resource.correlationId}) — socket is not open`);
       return;
     }
-    const signedMessage = {
-      payload: resource,
-      signature: await getMessageSignature(
-        JSON.stringify(resource),
-        this.secret
-      ),
-    };
-    this.socket.send(JSON.stringify(signedMessage));
+    this.socket.send(JSON.stringify(resource));
   }
 
   public async sendErrorToServer(

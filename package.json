@@ -17,8 +17,7 @@
   "scripts": {
     "build:server": "cd server && npx esbuild server.ts --bundle --platform=node --outdir=dist --format=cjs --packages=external",
     "build:extension": "cd extension && npx esbuild background.ts --bundle --outfile=dist/background.js",
-    "build": "npm run build:server && npm run build:extension",
-    "postbuild": "node scripts/generate-token.js"
+    "build": "npm run build:server && npm run build:extension"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",

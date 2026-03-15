@@ -8,9 +8,6 @@ import {
   ExtensionError,
 } from "../common";
 import { isPortInUse } from "./util";
-import { join } from "path";
-import { readFile } from "fs/promises";
-import * as crypto from "crypto";
 
 // Support up to two initializations of the MCP server by clients
 // More initializations will result in EDADDRINUSE errors
@@ -26,10 +23,8 @@ interface ExtensionRequestResolver<T extends ExtensionMessage["resource"]> {
 export class BrowserAPI {
   private ws: WebSocket | null = null;
   private wsServer: WebSocket.Server | null = null;
-  private sharedSecret: string | null = null;
   private hasConnected = false;
   private hasDisconnected = false;
-  private hadSignatureMismatch = false;
 
   private extensionRequestMap: Map<
     string,
@@ -37,12 +32,6 @@ export class BrowserAPI {
   > = new Map();
 
   async init() {
-    const { secret } = await readConfig();
-    if (!secret) {
-      throw new Error("Secret not found in config.json");
-    }
-    this.sharedSecret = secret;
-
     let selectedPort = null;
 
     for (const port of WS_PORTS) {
@@ -63,7 +52,6 @@ export class BrowserAPI {
       this.ws = connection;
       this.hasConnected = true;
       this.hasDisconnected = false;
-      this.hadSignatureMismatch = false;
       console.error("Firefox extension connected");
 
       this.ws.on("close", () => {
@@ -78,13 +66,7 @@ export class BrowserAPI {
           this.handleExtensionError(decoded);
           return;
         }
-        const signature = this.createSignature(JSON.stringify(decoded.payload));
-        if (signature !== decoded.signature) {
-          this.hadSignatureMismatch = true;
-          console.error("Invalid message signature — shared secret mismatch. Rebuild the project and reload the extension.");
-          return;
-        }
-        this.handleDecodedExtensionMessage(decoded.payload);
+        this.handleDecodedExtensionMessage(decoded);
       });
     });
     this.wsServer.on("error", (error) => {
@@ -278,22 +260,9 @@ export class BrowserAPI {
     return message.matches;
   }
 
-  private createSignature(payload: string): string {
-    if (!this.sharedSecret) {
-      throw new Error("Shared secret not initialized");
-    }
-    const hmac = crypto.createHmac("sha256", this.sharedSecret);
-    hmac.update(payload);
-    return hmac.digest("hex");
-  }
-
   private sendMessageToExtension(message: ServerMessage): string {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      if (this.hadSignatureMismatch) {
-        throw new Error(
-          "Firefox extension connected but has a mismatched shared secret. Rebuild the project (make build) and reload the extension in about:debugging."
-        );
-      } else if (this.hasDisconnected) {
+      if (this.hasDisconnected) {
         throw new Error(
           "Firefox extension was connected but disconnected. Check that Firefox is still running and reload the extension in about:debugging."
         );
@@ -307,15 +276,9 @@ export class BrowserAPI {
 
     const correlationId = Math.random().toString(36).substring(2);
     const req: ServerMessageRequest = { ...message, correlationId };
-    const payload = JSON.stringify(req);
-    const signature = this.createSignature(payload);
-    const signedMessage = {
-      payload: req,
-      signature: signature,
-    };
 
     console.error(`[browser-api] Sending ${req.cmd} (id: ${correlationId})`);
-    this.ws.send(JSON.stringify(signedMessage));
+    this.ws.send(JSON.stringify(req));
 
     return correlationId;
   }
@@ -371,12 +334,6 @@ export class BrowserAPI {
       }
     );
   }
-}
-
-async function readConfig() {
-  const configPath = join(__dirname, "config.json");
-  const config = JSON.parse(await readFile(configPath, "utf8"));
-  return config;
 }
 
 export function isErrorMessage(
