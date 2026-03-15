@@ -177,6 +177,56 @@ mcpServer.tool(
   }
 );
 
+mcpServer.tool(
+  "click-element-in-browser-tab",
+  "Click an element on a webpage by CSS selector",
+  { tabId: z.number(), selector: z.string() },
+  async ({ tabId, selector }) => {
+    const success = await browserApi.clickElement(tabId, selector);
+    return {
+      content: [
+        {
+          type: "text",
+          text: success
+            ? `Clicked element matching "${selector}"`
+            : `No element found matching "${selector}"`,
+          isError: !success,
+        },
+      ],
+    };
+  }
+);
+
+mcpServer.tool(
+  "type-into-field-in-browser-tab",
+  "Type text into an input field on a webpage by CSS selector",
+  {
+    tabId: z.number(),
+    selector: z.string(),
+    text: z.string(),
+    clearFirst: z.boolean().default(true),
+  },
+  async ({ tabId, selector, text, clearFirst }) => {
+    const success = await browserApi.typeIntoField(
+      tabId,
+      selector,
+      text,
+      clearFirst
+    );
+    return {
+      content: [
+        {
+          type: "text",
+          text: success
+            ? `Typed text into element matching "${selector}"`
+            : `No element found matching "${selector}"`,
+          isError: !success,
+        },
+      ],
+    };
+  }
+);
+
 mcpServer.resource(
   "open-tab-contents",
   new ResourceTemplate("browser://tab/{tabId}/content", {

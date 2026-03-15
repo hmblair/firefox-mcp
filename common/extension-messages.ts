@@ -55,6 +55,16 @@ export interface TabsClosedExtensionMessage extends ExtensionMessageBase {
   resource: "tabs-closed";
 }
 
+export interface ElementClickedExtensionMessage extends ExtensionMessageBase {
+  resource: "element-clicked";
+  success: boolean;
+}
+
+export interface TextTypedExtensionMessage extends ExtensionMessageBase {
+  resource: "text-typed";
+  success: boolean;
+}
+
 export type ExtensionMessage =
   | TabContentExtensionMessage
   | TabsExtensionMessage
@@ -62,7 +72,9 @@ export type ExtensionMessage =
   | BrowserHistoryExtensionMessage
   | ReorderedTabsExtensionMessage
   | FindHighlightExtensionMessage
-  | TabsClosedExtensionMessage;
+  | TabsClosedExtensionMessage
+  | ElementClickedExtensionMessage
+  | TextTypedExtensionMessage;
 
 export interface ExtensionError {
   correlationId: string;

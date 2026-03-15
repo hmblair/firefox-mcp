@@ -35,6 +35,18 @@ export class MessageHandler {
           req.queryPhrase
         );
         break;
+      case "click-element":
+        await this.clickElement(req.correlationId, req.tabId, req.selector);
+        break;
+      case "type-into-field":
+        await this.typeIntoField(
+          req.correlationId,
+          req.tabId,
+          req.selector,
+          req.text,
+          req.clearFirst ?? true
+        );
+        break;
       default:
         const _exhaustiveCheck: never = req;
         console.error("Invalid message received:", req);
@@ -183,6 +195,63 @@ export class MessageHandler {
       resource: "find-highlight-result",
       correlationId,
       noOfResults: findResults.count,
+    });
+  }
+
+  private async clickElement(
+    correlationId: string,
+    tabId: number,
+    selector: string
+  ): Promise<void> {
+    const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const el = document.querySelector('${escapedSelector}');
+        if (el) {
+          el.click();
+          return true;
+        }
+        return false;
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "element-clicked",
+      correlationId,
+      success: !!results[0],
+    });
+  }
+
+  private async typeIntoField(
+    correlationId: string,
+    tabId: number,
+    selector: string,
+    text: string,
+    clearFirst: boolean
+  ): Promise<void> {
+    const escapedSelector = selector.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const escapedText = text.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const results = await browser.tabs.executeScript(tabId, {
+      code: `
+      (function () {
+        const el = document.querySelector('${escapedSelector}');
+        if (!el) return false;
+        el.focus();
+        if (${clearFirst}) {
+          el.value = '';
+        }
+        el.value = ${clearFirst ? `'${escapedText}'` : `el.value + '${escapedText}'`};
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })();
+    `,
+    });
+    await this.client.sendResourceToServer({
+      resource: "text-typed",
+      correlationId,
+      success: !!results[0],
     });
   }
 }
