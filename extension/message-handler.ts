@@ -57,9 +57,9 @@ export class MessageHandler {
   }
 
   private async openUrl(correlationId: string, url: string): Promise<void> {
-    if (!url.startsWith("https://")) {
+    if (!url.startsWith("https://") && !url.startsWith("http://")) {
       console.error("Invalid URL:", url);
-      throw new Error("Invalid URL");
+      throw new Error("Invalid URL: must use http:// or https://");
     }
 
     const tab = await browser.tabs.create({
@@ -181,7 +181,7 @@ export class MessageHandler {
   ): Promise<void> {
     const findResults = await browser.find.find(queryPhrase, {
       tabId,
-      caseSensitive: true,
+      caseSensitive: false,
     });
 
     // If there are results, highlight them

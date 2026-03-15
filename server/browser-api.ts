@@ -16,7 +16,7 @@ import * as crypto from "crypto";
 // Support up to two initializations of the MCP server by clients
 // More initializations will result in EDADDRINUSE errors
 const WS_PORTS = [8081, 8082];
-const EXTENSION_RESPONSE_TIMEOUT_MS = 1000;
+const EXTENSION_RESPONSE_TIMEOUT_MS = 15_000;
 
 interface ExtensionRequestResolver<T extends ExtensionMessage["resource"]> {
   resource: T;
@@ -207,7 +207,9 @@ export class BrowserAPI {
 
   private sendMessageToExtension(message: ServerMessage): string {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error("WebSocket is not open");
+      throw new Error(
+        "Firefox extension is not connected. Make sure the extension is loaded in Firefox and Firefox is running."
+      );
     }
 
     const correlationId = Math.random().toString(36).substring(2);

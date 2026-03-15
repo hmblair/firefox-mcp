@@ -1,79 +1,91 @@
-# Browser Control MCP
+# Firefox MCP
 
-An MCP server paired with a browser extension that enables LLM clients, such as Claude Desktop, to control the user's local browser (Firefox).
+An MCP server paired with a Firefox extension that enables AI assistants to control the user's browser.
 
-## Features
-
-The MCP server supports the following tools:
-- Open or close tabs
-- Get the list of opened tabs
-- Reorder opened tabs
-- Read and search the browser's history
-- Read webpages text content and links
-- Find and highlight text in a browser tab
-
-In addition, the contents of each opened tab in the browser is available as an MCP resource, allowing the user
-to select browser tabs in the MCP client itself (e.g. Claude) and load their content into the context.
-
-## Example use-cases:
-
-
-### Tab management
-- *"Close all non-work related tabs in my browser."*
-- *"Rearrange tabs in my browser in an order that makes sense."*
-- *"Close all tabs in my browser that haven't been accessed within the past 24 hours"*
-
-### Browser history search
-- *"Help me find an article in my browser history about the Milford track in NZ."*
-- *"Open all the articles about AI that I visited during the last week, up to 10 articles, avoid duplications."*
-
-### Browsing and research 
-- *"Open hackernews in my browser, then open the top story, read it, also read the comments. Do the comments agree with the story?"*
-- *"In my browser, use Google Scholar to search for papers about L-theanine in the last 3 years. Open the 3 most cited papers. Read them and summarize them for me."*
-- *"Use google search in my browser to look for flower shops. Open the 10 most relevant results. Show me a table of each flower shop with location and opening hours."*
-
-## Installation
-
-Clone this repository, then run the following commands in the main repository directory to build both the MCP server and the browser extension.
 ```
+MCP Client (Claude, etc.) <--stdio--> MCP Server <--WebSocket--> Firefox Extension
+```
+
+## Tools
+
+| Tool | Description |
+|------|-------------|
+| `openTab` | Open a URL in a new browser tab |
+| `closeTabs` | Close browser tabs by their IDs |
+| `listTabs` | List all open browser tabs |
+| `searchHistory` | Search the browser's recent history |
+| `getTabContent` | Read a webpage's text content and links |
+| `reorderTabs` | Reorder open browser tabs |
+| `findInTab` | Find and highlight text in a browser tab |
+| `listInteractiveElements` | List interactive elements (buttons, inputs, links) with CSS selectors |
+| `clickElement` | Click an element on a webpage by CSS selector |
+| `typeIntoField` | Type text into an input field by CSS selector |
+
+Open tab contents are also available as MCP resources.
+
+## Setup
+
+### 1. Build
+
+```sh
 npm install
-npm install --prefix mcp-server
-npm install --prefix firefox-extension
-npm run build
+make build
 ```
 
-The final `npm run build` command will also generate a shared secret between the MCP server and the extension.
+### 2. Register with MCP clients
 
-
-### Usage with Claude Desktop:
-
-Add the following configuration to `claude_desktop_config.json` (use the Edit Config button in Claude Desktop Developer settings):
+```sh
+make install
 ```
-{
-    "mcpServers": {
-        "browser-control": {
-            "command": "node",
-            "args": [
-                "<path to repo>/mcp-server/dist/server.js"
-            ]
-        }
-    }
-}
+
+This interactively registers the server with Claude Code (`~/.mcp.json`) and/or OpenCode.
+
+To remove:
+
+```sh
+make uninstall
 ```
-Replace `<path to repo>` with the correct path.
 
-Make sure to restart Claude Desktop. 
+### 3. Load the extension in Firefox
 
+1. Open `about:debugging` in Firefox
+2. Click "This Firefox"
+3. Click "Load Temporary Add-on..."
+4. Select `extension/manifest.json`
 
-### Usage with Firefox
+To install permanently, use the built XPI at `dist/firefox-mcp.xpi` (requires signing for release Firefox, or use Firefox Developer Edition / Nightly with `xpinstall.signatures.required` set to `false`).
 
-The browser-control-mcp extension was developed for Firefox.
+## Security
 
-To install the extension:
+The MCP server and extension communicate over a local WebSocket connection authenticated with HMAC-SHA256 signatures using a shared secret generated at build time.
 
-1. Type `about:debugging` in the Firefox URL bar
-2. Click on "This Firefox"
-3. click on "Load Temporary Add-on..."
-4. Select the `manifest.json` file under the `firefox-extension` folder in this project
+## Development
 
-If you prefer not to run the extension on your personal Firefox browser, an alternative is to download a separate Firefox instance (such as Firefox Developer Edition, available at https://www.mozilla.org/en-US/firefox/developer/).
+```sh
+make build    # Compile TypeScript and package extension XPI
+make clean    # Remove build artifacts
+make tag      # Tag current version in git
+```
+
+## Project Structure
+
+```
+extension/          Firefox extension source (TypeScript)
+  manifest.json     Extension manifest
+  background.ts     Service worker entry point
+  client.ts         WebSocket client
+  message-handler.ts  Handles server commands
+  auth.ts           HMAC-SHA256 message signing
+server/             MCP server source (TypeScript)
+  server.ts         MCP tool definitions and entry point
+  browser-api.ts    WebSocket communication with extension
+  util.ts           Port utilities
+common/             Shared TypeScript interfaces
+  server-messages.ts  Server-to-extension message types
+  extension-messages.ts  Extension-to-server message types
+mcp-bridge.cjs      Executable entry point
+scripts/
+  install.cjs       MCP client config installer
+  generate-token.js Shared secret generator
+Makefile            Build and install targets
+```

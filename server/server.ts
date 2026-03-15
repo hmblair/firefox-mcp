@@ -7,18 +7,24 @@ import { z } from "zod";
 import { BrowserAPI } from "./browser-api";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 dayjs.extend(relativeTime);
 
+const { version } = JSON.parse(
+  readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")
+);
+
 const mcpServer = new McpServer({
-  name: "BrowserControl",
-  version: "1.2.0",
+  name: "firefox-mcp",
+  version,
 });
 
 mcpServer.tool(
-  "open-browser-tab",
-  "Open a new tab in the user's browser",
-  { url: z.string() },
+  "openTab",
+  "Open a URL in a new browser tab",
+  { url: z.string().describe("The URL to open") },
   async ({ url }) => {
     const openedTabId = await browserApi.openTab(url);
     if (openedTabId !== undefined) {
@@ -39,9 +45,9 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "close-browser-tabs",
-  "Close tabs in the user's browser by tab IDs",
-  { tabIds: z.array(z.number()) },
+  "closeTabs",
+  "Close browser tabs by their IDs",
+  { tabIds: z.array(z.number()).describe("Tab IDs to close") },
   async ({ tabIds }) => {
     await browserApi.closeTabs(tabIds);
     return {
@@ -51,8 +57,8 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "get-list-of-open-tabs",
-  "Get the list of open tabs in the user's browser",
+  "listTabs",
+  "List all open browser tabs",
   {},
   async () => {
     const openTabs = await browserApi.getTabList();
@@ -60,11 +66,11 @@ mcpServer.tool(
       content: openTabs.map((tab) => {
         let lastAccessed = "unknown";
         if (tab.lastAccessed) {
-          lastAccessed = dayjs(tab.lastAccessed).fromNow(); // LLM-friendly time ago
+          lastAccessed = dayjs(tab.lastAccessed).fromNow();
         }
         return {
           type: "text",
-          text: `tab id=${tab.id}, tab url=${tab.url}, tab title=${tab.title}, last accessed=${lastAccessed}`,
+          text: `tab id=${tab.id}, url=${tab.url}, title=${tab.title}, last accessed=${lastAccessed}`,
         };
       }),
     };
@@ -72,19 +78,22 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "get-recent-browser-history",
-  "Get the list of recent browser history (to get all, don't use searchQuery)",
-  { searchQuery: z.string().optional() },
-  async ({ searchQuery }) => {
-    const browserHistory = await browserApi.getBrowserRecentHistory(
-      searchQuery
-    );
+  "searchHistory",
+  "Search the browser's recent history",
+  {
+    query: z
+      .string()
+      .optional()
+      .describe("Search query to filter history (omit to list all recent)"),
+  },
+  async ({ query }) => {
+    const browserHistory = await browserApi.getBrowserRecentHistory(query);
     if (browserHistory.length > 0) {
       return {
         content: browserHistory.map((item) => {
           let lastVisited = "unknown";
           if (item.lastVisitTime) {
-            lastVisited = dayjs(item.lastVisitTime).fromNow(); // LLM-friendly time ago
+            lastVisited = dayjs(item.lastVisitTime).fromNow();
           }
           return {
             type: "text",
@@ -93,31 +102,33 @@ mcpServer.tool(
         }),
       };
     } else {
-      // If nothing was found for the search query, hint the AI to list
-      // all the recent history items instead.
-      const hint = searchQuery ? "Try without a searchQuery" : "";
-      return { content: [{ type: "text", text: `No history found. ${hint}` }] };
+      const hint = query ? " Try without a query." : "";
+      return {
+        content: [{ type: "text", text: `No history found.${hint}` }],
+      };
     }
   }
 );
 
 mcpServer.tool(
-  "get-tab-web-content",
-  `
-    Get the full text content of the webpage and the list of links in the webpage, by tab ID. 
-    Use "offset" only for larger documents when the first call was truncated and if you require more content in order to assist the user.
-  `,
-  { tabId: z.number(), offset: z.number().default(0) },
+  "getTabContent",
+  "Read a webpage's text content and links by tab ID",
+  {
+    tabId: z.number().describe("The tab ID to read content from"),
+    offset: z
+      .number()
+      .default(0)
+      .describe(
+        "Character offset for paginating large documents (default: 0)"
+      ),
+  },
   async ({ tabId, offset }) => {
     const content = await browserApi.getTabContent(tabId, offset);
     let links: { type: "text"; text: string }[] = [];
     if (offset === 0) {
-      // Only include the links if offset is 0 (default value). Otherwise, we can
-      // assume this is not the first call. Adding the links again would be redundant.
       links = content.links.map((link: { text: string; url: string }) => {
         return {
           type: "text",
-
           text: `Link text: ${link.text}, Link URL: ${link.url}`,
         };
       });
@@ -126,16 +137,13 @@ mcpServer.tool(
     let text = content.fullText;
     let hint: { type: "text"; text: string }[] = [];
     if (content.isTruncated || offset > 0) {
-      // If the content is truncated, add a "tip" suggesting
-      // that another tool, search in page, can be used to
-      // discover additional data.
       const rangeString = `${offset}-${offset + text.length}`;
       hint = [
         {
           type: "text",
           text:
-            `The following text content is truncated due to size (includes character range ${rangeString} out of ${content.totalLength}). ` +
-            "If you want to read characters beyond this range, please use the 'get-tab-web-content' tool with an offset. ",
+            `Content truncated (range ${rangeString} of ${content.totalLength}). ` +
+            "Use getTabContent with a higher offset to read more.",
         },
       ];
     }
@@ -147,9 +155,13 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "reorder-browser-tabs",
-  "Change the order of open browser tabs",
-  { tabOrder: z.array(z.number()) },
+  "reorderTabs",
+  "Reorder open browser tabs",
+  {
+    tabOrder: z
+      .array(z.number())
+      .describe("Ordered array of tab IDs representing the desired order"),
+  },
   async ({ tabOrder }) => {
     const newOrder = await browserApi.reorderTabs(tabOrder);
     return {
@@ -161,16 +173,19 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "find-highlight-in-browser-tab",
-  "Find and highlight text in a browser tab (use a query phrase that exists in the web content)",
-  { tabId: z.number(), queryPhrase: z.string() },
+  "findInTab",
+  "Find and highlight text in a browser tab",
+  {
+    tabId: z.number().describe("The tab ID to search in"),
+    queryPhrase: z.string().describe("The text to find and highlight"),
+  },
   async ({ tabId, queryPhrase }) => {
     const noOfResults = await browserApi.findHighlight(tabId, queryPhrase);
     return {
       content: [
         {
           type: "text",
-          text: `Number of results found and highlighted in the tab: ${noOfResults}`,
+          text: `Found and highlighted ${noOfResults} result(s)`,
         },
       ],
     };
@@ -178,14 +193,16 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "get-interactive-elements-in-browser-tab",
-  "Get all interactive elements (buttons, inputs, links, selects, textareas) on a webpage, with their CSS selectors and labels",
-  { tabId: z.number() },
+  "listInteractiveElements",
+  "List interactive elements on a webpage (buttons, inputs, links, selects, textareas) with CSS selectors",
+  { tabId: z.number().describe("The tab ID to inspect") },
   async ({ tabId }) => {
     const elements = await browserApi.getInteractiveElements(tabId);
     if (elements.length === 0) {
       return {
-        content: [{ type: "text", text: "No interactive elements found on the page" }],
+        content: [
+          { type: "text", text: "No interactive elements found on the page" },
+        ],
       };
     }
     return {
@@ -203,9 +220,12 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "click-element-in-browser-tab",
+  "clickElement",
   "Click an element on a webpage by CSS selector",
-  { tabId: z.number(), selector: z.string() },
+  {
+    tabId: z.number().describe("The tab ID containing the element"),
+    selector: z.string().describe("CSS selector of the element to click"),
+  },
   async ({ tabId, selector }) => {
     const success = await browserApi.clickElement(tabId, selector);
     return {
@@ -223,13 +243,16 @@ mcpServer.tool(
 );
 
 mcpServer.tool(
-  "type-into-field-in-browser-tab",
-  "Type text into an input field on a webpage by CSS selector",
+  "typeIntoField",
+  "Type text into an input field on a webpage",
   {
-    tabId: z.number(),
-    selector: z.string(),
-    text: z.string(),
-    clearFirst: z.boolean().default(true),
+    tabId: z.number().describe("The tab ID containing the field"),
+    selector: z.string().describe("CSS selector of the input field"),
+    text: z.string().describe("The text to type"),
+    clearFirst: z
+      .boolean()
+      .default(true)
+      .describe("Clear existing field value before typing (default: true)"),
   },
   async ({ tabId, selector, text, clearFirst }) => {
     const success = await browserApi.typeIntoField(
