@@ -11,7 +11,7 @@ compile:
 xpi:
 	@rm -rf dist/stage
 	@mkdir -p dist/stage
-	@cp -r extension/manifest.json extension/dist/ dist/stage/
+	@cp -r extension/manifest.json extension/dist dist/stage/
 	@node -e "const m=JSON.parse(require('fs').readFileSync('dist/stage/manifest.json','utf8')); m.version='$(VERSION)'; require('fs').writeFileSync('dist/stage/manifest.json', JSON.stringify(m,null,2)+'\n');"
 	@cd dist/stage && zip -r ../firefox-mcp.xpi . -x "*.DS_Store" -x "*.git*"
 	@rm -rf dist/stage
