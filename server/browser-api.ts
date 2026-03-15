@@ -334,7 +334,7 @@ export class BrowserAPI {
       signature: signature,
     };
 
-    // Send the signed message to the extension
+    console.error(`[browser-api] Sending ${req.cmd} (id: ${correlationId})`);
     this.ws.send(JSON.stringify(signedMessage));
 
     return correlationId;
@@ -342,20 +342,33 @@ export class BrowserAPI {
 
   private handleDecodedExtensionMessage(decoded: ExtensionMessage) {
     const { correlationId } = decoded;
-    const { resolve, resource } = this.extensionRequestMap.get(correlationId)!;
-    if (resource !== decoded.resource) {
-      console.error("Resource mismatch:", resource, decoded.resource);
+    const entry = this.extensionRequestMap.get(correlationId);
+    if (!entry) {
+      console.error(`[browser-api] Received response for unknown correlationId: ${correlationId} (resource: ${decoded.resource})`);
       return;
     }
+    const { resolve, resource, reject } = entry;
+    if (resource !== decoded.resource) {
+      console.error(`[browser-api] Resource mismatch for id ${correlationId}: expected '${resource}', got '${decoded.resource}'`);
+      this.extensionRequestMap.delete(correlationId);
+      reject(`Resource mismatch: expected '${resource}', got '${decoded.resource}'`);
+      return;
+    }
+    console.error(`[browser-api] Received ${decoded.resource} (id: ${correlationId})`);
     this.extensionRequestMap.delete(correlationId);
     resolve(decoded);
   }
 
   private handleExtensionError(decoded: ExtensionError) {
     const { correlationId, errorMessage } = decoded;
-    const { reject } = this.extensionRequestMap.get(correlationId)!;
+    const entry = this.extensionRequestMap.get(correlationId);
+    if (!entry) {
+      console.error(`[browser-api] Received error for unknown correlationId: ${correlationId}: ${errorMessage}`);
+      return;
+    }
+    console.error(`[browser-api] Extension error (id: ${correlationId}): ${errorMessage}`);
     this.extensionRequestMap.delete(correlationId);
-    reject(errorMessage);
+    entry.reject(errorMessage);
   }
 
   private async waitForResponse<T extends ExtensionMessage["resource"]>(
@@ -370,8 +383,10 @@ export class BrowserAPI {
           reject,
         });
         setTimeout(() => {
-          this.extensionRequestMap.delete(correlationId);
-          reject("Timed out waiting for response");
+          if (this.extensionRequestMap.has(correlationId)) {
+            this.extensionRequestMap.delete(correlationId);
+            reject(`Timed out waiting for '${resource}' response (id: ${correlationId})`);
+          }
         }, EXTENSION_RESPONSE_TIMEOUT_MS);
       }
     );

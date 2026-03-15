@@ -75,6 +75,7 @@ export class WebsocketClient {
   private startReconnectTimer(): void {
     this.reconnectTimer = window.setInterval(() => {
       if (!this.socket || this.socket.readyState === WebSocket.CLOSED) {
+        console.log("[client] Attempting reconnection to WebSocket server");
         this.connect();
       }
     }, this.reconnectInterval);
@@ -82,7 +83,7 @@ export class WebsocketClient {
 
   public async sendResourceToServer(resource: ExtensionMessage): Promise<void> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.error("Socket is not open");
+      console.warn(`[client] Dropping ${resource.resource} response (id: ${resource.correlationId}) — socket is not open`);
       return;
     }
     const signedMessage = {
@@ -100,7 +101,7 @@ export class WebsocketClient {
     errorMessage: string
   ): Promise<void> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.error("Socket is not open");
+      console.warn(`[client] Dropping error response (id: ${correlationId}) — socket is not open. Error was: ${errorMessage}`);
       return;
     }
     const extensionError: ExtensionError = {

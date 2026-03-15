@@ -43,6 +43,19 @@ export class MessageHandler {
   }
 
   public async handleDecodedMessage(req: ServerMessageRequest): Promise<void> {
+    console.log(`[handler] ${req.cmd} (id: ${req.correlationId})`, JSON.stringify(req, null, 2));
+    try {
+      await this.dispatchCommand(req);
+    } catch (error) {
+      console.error(`[handler] ${req.cmd} (id: ${req.correlationId}) failed:`, error);
+      await this.client.sendErrorToServer(
+        req.correlationId,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  private async dispatchCommand(req: ServerMessageRequest): Promise<void> {
     switch (req.cmd) {
       case "open-link":
         await this.openLink(
@@ -266,6 +279,11 @@ export class MessageHandler {
       })();
     `,
     });
+    if (!results || !results[0]) {
+      console.error(`[handler] executeScript returned no results for tab ${tabId}`);
+      await this.client.sendErrorToServer(correlationId, `executeScript returned no results for tab ${tabId} — the tab may have been closed or navigated to a restricted page`);
+      return;
+    }
     const { isTruncated, fullText, links, totalLength } = results[0];
     await this.client.sendResourceToServer({
       resource: "tab-content",
