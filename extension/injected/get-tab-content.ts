@@ -142,14 +142,14 @@ export const getTabContentScript = (
     const role = el.getAttribute('role');
     let label = LANDMARK_ROLES[role] || (LANDMARK_TAGS.has(el.tagName) ? tag : 'content');
 
-    const heading = el.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > * > h1, :scope > * > h2, :scope > * > h3, :scope > * > h4, :scope > * > h5, :scope > * > h6');
-    if (heading) {
-      const hText = heading.textContent.trim().substring(0, 50);
-      if (hText) label += ': ' + hText;
+    const ariaLabel = el.getAttribute('aria-label');
+    if (ariaLabel) {
+      label += ': ' + ariaLabel.substring(0, 50);
     } else {
-      const ariaLabel = el.getAttribute('aria-label');
-      if (ariaLabel) {
-        label += ': ' + ariaLabel.substring(0, 50);
+      const heading = el.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > * > h1, :scope > * > h2, :scope > * > h3, :scope > * > h4, :scope > * > h5, :scope > * > h6');
+      if (heading) {
+        const hText = heading.textContent.trim().substring(0, 50);
+        if (hText) label += ': ' + hText;
       } else {
         const ph = el.querySelector('input[placeholder], textarea[placeholder]');
         if (ph) {
@@ -158,6 +158,19 @@ export const getTabContentScript = (
       }
     }
     return label;
+  }
+
+  function getFormLabel(el) {
+    const ariaLabel = el.getAttribute('aria-label');
+    if (ariaLabel) return 'form: ' + ariaLabel.substring(0, 50);
+    const heading = el.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > * > h1, :scope > * > h2, :scope > * > h3, :scope > * > h4, :scope > * > h5, :scope > * > h6');
+    if (heading) {
+      const hText = heading.textContent.trim().substring(0, 50);
+      if (hText) return 'form: ' + hText;
+    }
+    const ph = el.querySelector('input[placeholder], textarea[placeholder]');
+    if (ph) return 'form: ' + ph.getAttribute('placeholder').substring(0, 50);
+    return 'form';
   }
 
   function getLinks(root) {
@@ -183,97 +196,193 @@ export const getTabContentScript = (
     return { fullText: text, sections: null, isTruncated, totalLength, selectorNotFound: false, links: getLinks(root) };
   }
 
-  const landmarkSelector = 'main, nav, aside, article, header, footer, section, form, [role="main"], [role="navigation"], [role="complementary"], [role="banner"], [role="contentinfo"], [role="form"], [role="region"]';
-  const landmarks = document.querySelectorAll(landmarkSelector);
+  const LANDMARK_SECTION_TAGS = new Set(['NAV', 'ASIDE', 'HEADER', 'FOOTER', 'ARTICLE']);
 
-  const topLandmarks = Array.from(landmarks).filter(el => {
-    let parent = el.parentElement;
-    while (parent) {
-      if (parent.matches && parent.matches(landmarkSelector)) return false;
-      parent = parent.parentElement;
-    }
-    return true;
-  });
-
-  if (topLandmarks.length === 0) {
-    const root = document.body;
-    const raw = cleanText(nodeToText(root));
-    const totalLength = raw.length;
-    let text = raw.substring(offset);
-    let isTruncated = false;
-    if (text.length > maxLen) {
-      text = text.substring(0, maxLen);
-      isTruncated = true;
-    }
-    return { fullText: text, sections: null, isTruncated, totalLength, selectorNotFound: false, links: getLinks(root) };
-  }
-
-  const landmarkSet = new Set(topLandmarks);
   const sections = [];
   let budget = maxLen;
   let totalLength = 0;
   let isTruncated = false;
+  let currentSection = null;
+  let inForm = false;
 
-  function processNode(node) {
-    if (budget <= 0) { isTruncated = true; return; }
-    if (node.nodeType === Node.TEXT_NODE) {
-      const t = node.textContent.trim();
-      if (t) {
-        if (sections.length > 0 && sections[sections.length - 1].label === 'content') {
-          sections[sections.length - 1].content += '\\n' + t;
-        } else {
-          sections.push({ label: 'content', content: t });
-        }
-        totalLength += t.length;
-        budget -= t.length;
-      }
-      return;
+  function flushText(text) {
+    if (!text) return;
+    totalLength += text.length;
+    if (text.length > budget) {
+      text = text.substring(0, budget);
+      isTruncated = true;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    if (SKIP_TAGS.has(node.tagName)) return;
-    if (isHidden(node)) return;
-
-    if (landmarkSet.has(node)) {
-      const raw = cleanText(childrenToText(node));
-      totalLength += raw.length;
-      let content = raw;
-      if (content.length > budget) {
-        content = content.substring(0, budget);
-        isTruncated = true;
-      }
-      budget -= content.length;
-      if (content) sections.push({ label: getSectionLabel(node), content });
-      return;
-    }
-
-    const hasLandmarkChild = node.querySelector && node.querySelector(landmarkSelector);
-    if (hasLandmarkChild) {
-      for (const child of node.childNodes) {
-        processNode(child);
-        if (budget <= 0) break;
-      }
+    budget -= text.length;
+    if (!currentSection) {
+      currentSection = { label: 'content', content: text, fromHeading: false };
     } else {
-      const raw = cleanText(nodeToText(node));
-      if (raw) {
-        totalLength += raw.length;
-        let content = raw;
-        if (content.length > budget) {
-          content = content.substring(0, budget);
-          isTruncated = true;
-        }
-        budget -= content.length;
-        if (sections.length > 0 && sections[sections.length - 1].label === 'content') {
-          sections[sections.length - 1].content += '\\n\\n' + content;
-        } else {
-          sections.push({ label: 'content', content });
-        }
-      }
+      currentSection.content += text;
     }
   }
 
+  function startSection(label, fromHeading) {
+    if (currentSection && currentSection.content.trim()) {
+      currentSection.content = cleanText(currentSection.content);
+      sections.push(currentSection);
+    }
+    if (label !== null) {
+      currentSection = { label, content: '', fromHeading };
+    } else {
+      currentSection = null;
+    }
+  }
+
+  function walkNode(node) {
+    if (budget <= 0) { isTruncated = true; return; }
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = node.textContent.replace(/[ \\t]+/g, ' ');
+      flushText(t);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node;
+    const tag = el.tagName;
+    if (SKIP_TAGS.has(tag)) return;
+    if (isHidden(el)) return;
+
+    const hMatch = tag.match(/^H([1-6])$/);
+    if (hMatch) {
+      const text = el.textContent.trim();
+      if (text) {
+        const level = parseInt(hMatch[1]);
+        if (!inForm) {
+          startSection('section: ' + text.replace(/\\s+/g, ' ').substring(0, 50), true);
+        }
+        flushText('#'.repeat(level) + ' ' + text + '\\n\\n');
+      }
+      return;
+    }
+
+    if (LANDMARK_SECTION_TAGS.has(tag)) {
+      startSection(getSectionLabel(el), false);
+      for (const child of el.childNodes) {
+        walkNode(child);
+        if (budget <= 0) break;
+      }
+      startSection(null, false);
+      return;
+    }
+
+    if (tag === 'FORM') {
+      if (currentSection && currentSection.fromHeading) {
+        inForm = true;
+        for (const child of el.childNodes) {
+          walkNode(child);
+          if (budget <= 0) break;
+        }
+        inForm = false;
+      } else {
+        startSection(getFormLabel(el), false);
+        inForm = true;
+        for (const child of el.childNodes) {
+          walkNode(child);
+          if (budget <= 0) break;
+        }
+        inForm = false;
+      }
+      return;
+    }
+
+    if (tag === 'HR') { flushText('\\n\\n---\\n\\n'); return; }
+    if (tag === 'BR') { flushText('\\n'); return; }
+    if (tag === 'IMG') {
+      const alt = el.getAttribute('alt');
+      if (alt) flushText('[image: ' + alt + ']');
+      return;
+    }
+    if (tag === 'SELECT') {
+      const opt = el.options && el.options[el.selectedIndex];
+      if (!opt) { flushText('[dropdown]'); return; }
+      const text = opt.text.trim();
+      const val = opt.value;
+      flushText(text !== val ? '[dropdown: ' + text + ' (' + val + ')]' : '[dropdown: ' + text + ']');
+      return;
+    }
+    if (tag === 'LI') {
+      const parent = el.parentElement;
+      const isOrdered = parent && parent.tagName === 'OL';
+      const prefix = isOrdered
+        ? (Array.from(parent.children).indexOf(el) + 1) + '. '
+        : '- ';
+      flushText('\\n' + prefix);
+      for (const child of el.childNodes) {
+        walkNode(child);
+        if (budget <= 0) break;
+      }
+      return;
+    }
+    if (tag === 'UL' || tag === 'OL') {
+      flushText('\\n');
+      for (const child of el.childNodes) {
+        walkNode(child);
+        if (budget <= 0) break;
+      }
+      flushText('\\n');
+      return;
+    }
+    if (tag === 'BLOCKQUOTE') {
+      const inner = childrenToText(el).trim();
+      const lines = inner.split('\\n').map(l => '> ' + l).join('\\n');
+      flushText('\\n\\n' + lines + '\\n\\n');
+      return;
+    }
+    if (tag === 'PRE') {
+      flushText('\\n\\n\`\`\`\\n' + el.textContent + '\\n\`\`\`\\n\\n');
+      return;
+    }
+    if (tag === 'TABLE') {
+      flushText('\\n\\n' + tableToText(el) + '\\n\\n');
+      return;
+    }
+    if (tag === 'STRONG' || tag === 'B') {
+      const t = childrenToText(el).trim();
+      if (t) flushText('**' + t + '**');
+      return;
+    }
+    if (tag === 'EM' || tag === 'I') {
+      const t = childrenToText(el).trim();
+      if (t) flushText('*' + t + '*');
+      return;
+    }
+    if (tag === 'A') {
+      const t = childrenToText(el).trim();
+      if (t) flushText(t);
+      return;
+    }
+
+    const isBlock = BLOCK_TAGS.has(tag);
+    if (isBlock) flushText('\\n\\n');
+    for (const child of el.childNodes) {
+      walkNode(child);
+      if (budget <= 0) break;
+    }
+    if (isBlock) flushText('\\n\\n');
+  }
+
   for (const child of document.body.childNodes) {
-    processNode(child);
+    walkNode(child);
     if (budget <= 0) break;
+  }
+
+  if (currentSection && currentSection.content.trim()) {
+    currentSection.content = cleanText(currentSection.content);
+    sections.push(currentSection);
+  }
+
+  if (sections.length <= 1) {
+    const raw = sections.length === 1 ? sections[0].content : '';
+    let text = raw.substring(offset);
+    if (text.length > maxLen) {
+      text = text.substring(0, maxLen);
+      isTruncated = true;
+    }
+    return { fullText: text, sections: null, isTruncated, totalLength, selectorNotFound: false, links: getLinks(document.body) };
   }
 
   if (offset > 0) {
@@ -294,6 +403,7 @@ export const getTabContentScript = (
     return { fullText: null, sections: trimmed, isTruncated, totalLength, selectorNotFound: false, links: includeLinks ? getLinks(document.body) : [] };
   }
 
-  return { fullText: null, sections, isTruncated, totalLength, selectorNotFound: false, links: includeLinks ? getLinks(document.body) : [] };
+  const cleanSections = sections.map(s => ({ label: s.label, content: s.content }));
+  return { fullText: null, sections: cleanSections, isTruncated, totalLength, selectorNotFound: false, links: includeLinks ? getLinks(document.body) : [] };
 })();
 `;
