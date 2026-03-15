@@ -60,6 +60,8 @@ export interface InteractiveElement {
   placeholder?: string;
   context?: string;
   enabled: boolean;
+  options?: { value: string; text: string }[];
+  optionsTruncated?: boolean;
 }
 
 export interface InteractiveElementsExtensionMessage extends ExtensionMessageBase {
@@ -89,6 +91,7 @@ export interface KeyPressedExtensionMessage extends ExtensionMessageBase {
 export interface OptionSelectedExtensionMessage extends ExtensionMessageBase {
   resource: "option-selected";
   success: boolean;
+  error?: string;
 }
 
 export interface TabInfoExtensionMessage extends ExtensionMessageBase {

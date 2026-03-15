@@ -8,18 +8,7 @@ wsClient.connect();
 
 wsClient.addMessageListener(async (message) => {
   console.log("Message from server:", message);
-
-  try {
-    await messageHandler.handleDecodedMessage(message);
-  } catch (error) {
-    console.error("Error handling message:", error);
-    if (error instanceof Error) {
-      await wsClient.sendErrorToServer(
-        message.correlationId,
-        error.message
-      );
-    }
-  }
+  await messageHandler.handleDecodedMessage(message);
 });
 
 console.log("Browser extension initialized");

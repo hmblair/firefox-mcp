@@ -8,6 +8,7 @@ import {
   ExtensionError,
   WS_PORT,
 } from "../common";
+
 const EXTENSION_RESPONSE_TIMEOUT_MS = 60_000;
 
 interface ExtensionRequestResolver<T extends ExtensionMessage["resource"]> {
@@ -194,7 +195,7 @@ export class BrowserAPI {
     tabId: number,
     selector: string,
     value: string
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; error?: string }> {
     const correlationId = this.sendMessageToExtension({
       cmd: "select-option",
       tabId,
@@ -205,7 +206,7 @@ export class BrowserAPI {
       correlationId,
       "option-selected"
     );
-    return message.success;
+    return { success: message.success, error: message.error };
   }
 
   async getTabInfo(tabId: number): Promise<{ url: string; title: string; status: string }> {
@@ -352,10 +353,12 @@ export class BrowserAPI {
 }
 
 export function isErrorMessage(
-  message: any
+  message: unknown
 ): message is ExtensionError {
   return (
-    message.errorMessage !== undefined &&
-    message.correlationId !== undefined
+    typeof message === "object" &&
+    message !== null &&
+    "errorMessage" in message &&
+    "correlationId" in message
   );
 }
