@@ -5,7 +5,7 @@ const path = require("path");
 
 const VERSION = require(path.join(__dirname, "package.json")).version;
 
-const serverPath = path.join(__dirname, "server", "dist", "server", "server.js");
+const serverPath = path.join(__dirname, "server", "dist", "server.js");
 const child = spawn("node", [serverPath, ...process.argv.slice(2)], {
   stdio: "inherit",
   env: { ...process.env, MCP_VERSION: VERSION },

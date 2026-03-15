@@ -8,7 +8,7 @@ const config = {
   secret,
 };
 
-const copyLocations = ["../extension/dist", "../server/dist/server"];
+const copyLocations = ["../extension/dist", "../server/dist"];
 
 const jsonStr = JSON.stringify(config, null, 2);
 for (const loc of copyLocations) {
