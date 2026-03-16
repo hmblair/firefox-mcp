@@ -51,13 +51,17 @@ export class BrowserAPI {
       this.hasDisconnected = false;
       console.error("Firefox extension connected");
 
-      this.ws.on("close", () => {
-        this.hasDisconnected = true;
-        this.ws = null;
-        console.error("Firefox extension disconnected");
+      connection.on("close", () => {
+        if (this.ws === connection) {
+          this.hasDisconnected = true;
+          this.ws = null;
+          console.error("Firefox extension disconnected");
+        } else {
+          console.error("Stale Firefox extension connection closed (already replaced)");
+        }
       });
 
-      this.ws.on("message", (message) => {
+      connection.on("message", (message) => {
         const decoded = JSON.parse(message.toString());
         if (isErrorMessage(decoded)) {
           this.handleExtensionError(decoded);
