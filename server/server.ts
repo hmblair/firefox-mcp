@@ -424,14 +424,6 @@ mcpServer.resource(
 );
 
 const browserApi = new BrowserAPI();
-browserApi
-  .init()
-  .then((port) => {
-    console.error("Browser API initialized on port", port);
-  })
-  .catch((err) => {
-    console.error("Browser API init error (tools will report this on use):", err.message ?? err);
-  });
 
 const transport = new StdioServerTransport();
 mcpServer

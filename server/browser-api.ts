@@ -28,7 +28,20 @@ export class BrowserAPI {
     ExtensionRequestResolver<ExtensionMessage["resource"]>
   > = new Map();
 
-  async init() {
+  private initPromise: Promise<number> | null = null;
+
+  private async ensureInitialized(): Promise<void> {
+    if (this.wsServer) return;
+    if (!this.initPromise) {
+      this.initPromise = this.init().catch((err) => {
+        this.initPromise = null;
+        throw err;
+      });
+    }
+    await this.initPromise;
+  }
+
+  private async init() {
     return new Promise<number>((resolve, reject) => {
       const server = new WebSocket.Server({
         host: "localhost",
@@ -88,7 +101,7 @@ export class BrowserAPI {
     tabId?: number,
     newTab?: boolean
   ): Promise<number | undefined> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "open-link",
       url,
       tabId,
@@ -99,7 +112,7 @@ export class BrowserAPI {
   }
 
   async closeTabs(tabIds: number[]): Promise<{ closedTabIds: number[]; failedTabIds: number[] }> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "close-tabs",
       tabIds,
     });
@@ -108,7 +121,7 @@ export class BrowserAPI {
   }
 
   async getTabList(): Promise<BrowserTab[]> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "get-tab-list",
     });
     const message = await this.waitForResponse(correlationId, "tabs");
@@ -122,7 +135,7 @@ export class BrowserAPI {
     includeLinks?: boolean,
     maxLength?: number
   ): Promise<TabContentExtensionMessage> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "get-tab-content",
       tabId,
       offset,
@@ -134,7 +147,7 @@ export class BrowserAPI {
   }
 
   async getInteractiveElements(tabId: number, filter?: string, limit?: number) {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "get-interactive-elements",
       tabId,
       filter,
@@ -148,7 +161,7 @@ export class BrowserAPI {
     tabId: number,
     selector: string
   ): Promise<{ success: boolean; navigated?: boolean; url?: string; title?: string; error?: string }> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "click-element",
       tabId,
       selector,
@@ -164,7 +177,7 @@ export class BrowserAPI {
     clearFirst: boolean,
     submit: boolean
   ): Promise<{ success: boolean; error?: string }> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "type-into-field",
       tabId,
       selector,
@@ -177,7 +190,7 @@ export class BrowserAPI {
   }
 
   async reloadTab(tabId: number, bypassCache: boolean): Promise<void> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "reload-tab",
       tabId,
       bypassCache,
@@ -191,7 +204,7 @@ export class BrowserAPI {
     value: string,
     values?: string[]
   ): Promise<{ success: boolean; error?: string }> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "select-option",
       tabId,
       selector,
@@ -206,7 +219,7 @@ export class BrowserAPI {
   }
 
   async getTabInfo(tabId: number): Promise<{ url: string; title: string; status: string }> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "get-tab-info",
       tabId,
     });
@@ -219,7 +232,7 @@ export class BrowserAPI {
     fields: { selector: string; value?: string; checked?: boolean }[],
     submit?: string
   ): Promise<{ results: { selector: string; success: boolean; error?: string }[]; submitted: boolean }> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "fill-form",
       tabId,
       fields,
@@ -234,7 +247,7 @@ export class BrowserAPI {
     selector: string,
     timeoutMs?: number
   ): Promise<{ found: boolean }> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "wait-for-selector",
       tabId,
       selector,
@@ -245,7 +258,7 @@ export class BrowserAPI {
   }
 
   async takeScreenshot(tabId: number): Promise<string> {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "take-screenshot",
       tabId,
     });
@@ -254,7 +267,7 @@ export class BrowserAPI {
   }
 
   async searchTabContent(tabId: number, query: string, contextChars?: number) {
-    const correlationId = this.sendMessageToExtension({
+    const correlationId = await this.sendMessageToExtension({
       cmd: "search-tab-content",
       tabId,
       query,
@@ -267,7 +280,8 @@ export class BrowserAPI {
     return message.matches;
   }
 
-  private sendMessageToExtension(message: ServerMessage): string {
+  private async sendMessageToExtension(message: ServerMessage): Promise<string> {
+    await this.ensureInitialized();
     if (!this.wsServer) {
       throw new Error(
         "Browser API failed to initialize — no WebSocket port available. Another firefox-mcp instance may already be running. Close other Claude Code sessions using firefox-mcp and try again."
