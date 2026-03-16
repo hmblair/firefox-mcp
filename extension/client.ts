@@ -8,7 +8,9 @@ export class WebsocketClient {
   private socket: WebSocket | null = null;
   private readonly port: number;
   private reconnectInterval: number = 2000;
+  private connectingTimeout: number = 5000;
   private reconnectTimer: number | null = null;
+  private connectingSince: number | null = null;
   private messageCallback: ((data: ServerMessageRequest) => void) | null = null;
 
   constructor(port: number) {
@@ -26,8 +28,10 @@ export class WebsocketClient {
 
   private createSocket(): void {
     this.socket = new WebSocket(`ws://localhost:${this.port}`);
+    this.connectingSince = Date.now();
 
     this.socket.addEventListener("open", () => {
+      this.connectingSince = null;
       console.log("Connected to WebSocket server at port", this.port);
     });
 
@@ -59,6 +63,17 @@ export class WebsocketClient {
 
   private startReconnectTimer(): void {
     this.reconnectTimer = window.setInterval(() => {
+      if (
+        this.socket?.readyState === WebSocket.CONNECTING &&
+        this.connectingSince &&
+        Date.now() - this.connectingSince > this.connectingTimeout
+      ) {
+        console.warn("[client] Connection attempt timed out, aborting");
+        this.socket.close();
+        this.socket = null;
+        this.connectingSince = null;
+      }
+
       if (
         !this.socket ||
         (this.socket.readyState !== WebSocket.OPEN &&
