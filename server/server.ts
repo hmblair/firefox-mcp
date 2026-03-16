@@ -386,6 +386,9 @@ mcpServer.resource(
   "open-tab-contents",
   new ResourceTemplate("browser://tab/{tabId}/content", {
     list: async () => {
+      if (!browserApi.isInitialized) {
+        return { resources: [] };
+      }
       const openTabs = await browserApi.getTabList();
       return {
         resources: (openTabs ?? []).map((tab) => ({

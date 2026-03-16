@@ -29,6 +29,7 @@ export class BrowserAPI {
   > = new Map();
 
   private initPromise: Promise<number> | null = null;
+  private initializedAt: number | null = null;
 
   private async ensureInitialized(): Promise<void> {
     if (this.wsServer) return;
@@ -50,6 +51,7 @@ export class BrowserAPI {
 
       server.on("listening", () => {
         this.wsServer = server;
+        this.initializedAt = Date.now();
         console.error(`WebSocket server listening on port ${WS_PORT}`);
         resolve(WS_PORT);
       });
@@ -90,6 +92,10 @@ export class BrowserAPI {
         });
       });
     });
+  }
+
+  get isInitialized(): boolean {
+    return this.wsServer !== null;
   }
 
   close() {
@@ -288,13 +294,25 @@ export class BrowserAPI {
       );
     }
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      // If the server just started, wait briefly for the extension to connect
+      if (!this.hasConnected && !this.hasDisconnected && this.initializedAt) {
+        const age = Date.now() - this.initializedAt;
+        if (age < 10000) {
+          await this.waitForConnection(10000 - age);
+        }
+      }
+    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       if (this.hasDisconnected) {
         throw new Error(
           "Firefox extension was connected but disconnected. Check that Firefox is still running and reload the extension in about:debugging."
         );
       } else if (!this.hasConnected) {
+        const uptime = this.initializedAt
+          ? `${((Date.now() - this.initializedAt) / 1000).toFixed(1)}s`
+          : "unknown";
         throw new Error(
-          "Firefox extension has not connected. Make sure Firefox is running and the extension is loaded (about:debugging > Load Temporary Add-on)."
+          `Firefox extension has not connected (server uptime: ${uptime}). Make sure Firefox is running and the extension is loaded (about:debugging > Load Temporary Add-on).`
         );
       }
       throw new Error("Firefox extension is not connected.");
@@ -338,6 +356,26 @@ export class BrowserAPI {
     console.error(`[browser-api] Extension error (id: ${correlationId}): ${errorMessage}`);
     this.extensionRequestMap.delete(correlationId);
     entry.reject(errorMessage);
+  }
+
+  private waitForConnection(timeoutMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        resolve();
+        return;
+      }
+      const check = setInterval(() => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          clearInterval(check);
+          clearTimeout(timeout);
+          resolve();
+        }
+      }, 100);
+      const timeout = setTimeout(() => {
+        clearInterval(check);
+        resolve();
+      }, timeoutMs);
+    });
   }
 
   private async waitForResponse<T extends ExtensionMessage["resource"]>(
