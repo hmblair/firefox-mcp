@@ -273,6 +273,11 @@ export class BrowserAPI {
   }
 
   private sendMessageToExtension(message: ServerMessage): string {
+    if (!this.wsServer) {
+      throw new Error(
+        "Browser API failed to initialize — no WebSocket port available. Another firefox-mcp instance may already be running. Close other Claude Code sessions using firefox-mcp and try again."
+      );
+    }
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       if (this.hasDisconnected) {
         throw new Error(

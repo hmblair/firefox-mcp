@@ -473,8 +473,7 @@ browserApi
     console.error("Browser API initialized on port", port);
   })
   .catch((err) => {
-    console.error("Browser API init error", err);
-    process.exit(1);
+    console.error("Browser API init error (tools will report this on use):", err.message ?? err);
   });
 
 const transport = new StdioServerTransport();
