@@ -3,36 +3,50 @@ import type {
   ExtensionError,
   ServerMessageRequest,
 } from "../common";
+import { WS_PORT } from "../common";
+
+const RECONNECT_INTERVAL_MS = 2000;
+const CONNECTING_TIMEOUT_MS = 5000;
 
 export class WebsocketClient {
   private socket: WebSocket | null = null;
-  private readonly port: number;
-  private reconnectInterval: number = 2000;
-  private connectingTimeout: number = 5000;
   private reconnectTimer: number | null = null;
   private connectingSince: number | null = null;
   private messageCallback: ((data: ServerMessageRequest) => void) | null = null;
 
-  constructor(port: number) {
-    this.port = port;
-  }
-
   public connect(): void {
-    console.log("Connecting to WebSocket server at port", this.port);
+    console.log(`Connecting to WebSocket server on port ${WS_PORT}`);
     this.createSocket();
+    this.reconnectTimer = window.setInterval(() => {
+      if (
+        this.socket?.readyState === WebSocket.CONNECTING &&
+        this.connectingSince &&
+        Date.now() - this.connectingSince > CONNECTING_TIMEOUT_MS
+      ) {
+        console.warn("[client] Connection attempt timed out, aborting");
+        this.socket.close();
+        this.socket = null;
+        this.connectingSince = null;
+      }
 
-    if (this.reconnectTimer === null) {
-      this.startReconnectTimer();
-    }
+      if (
+        !this.socket ||
+        (this.socket.readyState !== WebSocket.OPEN &&
+          this.socket.readyState !== WebSocket.CONNECTING)
+      ) {
+        console.log("[client] Attempting reconnection to WebSocket server");
+        this.createSocket();
+      }
+    }, RECONNECT_INTERVAL_MS);
   }
 
   private createSocket(): void {
-    this.socket = new WebSocket(`ws://localhost:${this.port}`);
+    this.socket = new WebSocket(`ws://localhost:${WS_PORT}`);
     this.connectingSince = Date.now();
 
     this.socket.addEventListener("open", () => {
       this.connectingSince = null;
-      console.log("Connected to WebSocket server at port", this.port);
+      console.log(`Connected to WebSocket server on port ${WS_PORT}`);
     });
 
     this.socket.addEventListener("close", () => {
@@ -61,30 +75,6 @@ export class WebsocketClient {
     this.messageCallback = callback;
   }
 
-  private startReconnectTimer(): void {
-    this.reconnectTimer = window.setInterval(() => {
-      if (
-        this.socket?.readyState === WebSocket.CONNECTING &&
-        this.connectingSince &&
-        Date.now() - this.connectingSince > this.connectingTimeout
-      ) {
-        console.warn("[client] Connection attempt timed out, aborting");
-        this.socket.close();
-        this.socket = null;
-        this.connectingSince = null;
-      }
-
-      if (
-        !this.socket ||
-        (this.socket.readyState !== WebSocket.OPEN &&
-          this.socket.readyState !== WebSocket.CONNECTING)
-      ) {
-        console.log("[client] Attempting reconnection to WebSocket server");
-        this.createSocket();
-      }
-    }, this.reconnectInterval);
-  }
-
   public async sendResourceToServer(resource: ExtensionMessage): Promise<void> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       console.warn(`[client] Dropping ${resource.resource} response (id: ${resource.correlationId}) — socket is not open`);
@@ -103,20 +93,8 @@ export class WebsocketClient {
     }
     const extensionError: ExtensionError = {
       correlationId,
-      errorMessage: errorMessage,
+      errorMessage,
     };
     this.socket.send(JSON.stringify(extensionError));
-  }
-
-  public disconnect(): void {
-    if (this.reconnectTimer !== null) {
-      window.clearInterval(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
-    }
   }
 }

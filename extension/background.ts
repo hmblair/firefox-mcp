@@ -1,8 +1,7 @@
-import { WS_PORT } from "../common";
 import { WebsocketClient } from "./client";
 import { MessageHandler } from "./message-handler";
 
-const wsClient = new WebsocketClient(WS_PORT);
+const wsClient = new WebsocketClient();
 const messageHandler = new MessageHandler(wsClient);
 
 wsClient.connect();
