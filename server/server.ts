@@ -488,9 +488,13 @@ mcpServer
     process.exit(1);
   });
 
-process.stdin.on("close", () => {
-  console.error("MCP Server closed");
+function shutdown(reason: string) {
+  console.error(`MCP Server closed (${reason})`);
   browserApi.close();
   mcpServer.close();
   process.exit(0);
-});
+}
+
+process.stdin.on("close", () => shutdown("stdin closed"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGHUP", () => shutdown("SIGHUP"));
