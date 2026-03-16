@@ -679,9 +679,9 @@ export class MessageHandler {
           } else {
             const type = el.getAttribute('type');
             if (type) base += '[type="' + type + '"]';
-            if (el.className && typeof el.className === 'string') {
-              const cls = el.className.trim().split(/\\s+/).slice(0, 2).map(c => '.' + CSS.escape(c)).join('');
-              base += cls;
+            if (el.className && typeof el.className === 'string' && el.className.trim()) {
+              const cls = el.className.trim().split(/\\s+/).filter(Boolean).slice(0, 2).map(c => '.' + CSS.escape(c)).join('');
+              if (cls) base += cls;
             }
           }
 
