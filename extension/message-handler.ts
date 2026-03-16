@@ -90,7 +90,7 @@ export class MessageHandler {
         );
         break;
       case "get-interactive-elements":
-        await this.getInteractiveElements(req.correlationId, req.tabId);
+        await this.getInteractiveElements(req.correlationId, req.tabId, req.filter, req.limit);
         break;
       case "click-element":
         await this.clickElement(req.correlationId, req.tabId, req.selector);
@@ -139,6 +139,9 @@ export class MessageHandler {
           req.selector,
           req.timeoutMs
         );
+        break;
+      case "take-screenshot":
+        await this.takeScreenshot(req.correlationId, req.tabId);
         break;
       default:
         const _exhaustiveCheck: never = req;
@@ -240,7 +243,7 @@ export class MessageHandler {
         const offset = ${offset || 0};
         const maxLen = ${MAX_CONTENT_LENGTH};
 
-        const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'SVG', 'TEMPLATE', 'SELECT']);
+        const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SELECT']);
         const BLOCK_TAGS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'ASIDE', 'MAIN', 'NAV',
           'HEADER', 'FOOTER', 'FORM', 'FIELDSET', 'TABLE', 'UL', 'OL', 'DL', 'BLOCKQUOTE',
           'PRE', 'FIGURE', 'FIGCAPTION', 'DETAILS', 'SUMMARY', 'ADDRESS']);
@@ -289,6 +292,14 @@ export class MessageHandler {
           if (tag === 'IMG') {
             const alt = el.getAttribute('alt');
             return alt ? '[image: ' + alt + ']' : '';
+          }
+
+          // SVG — extract text elements
+          if (tag === 'SVG') {
+            const textEls = el.querySelectorAll('text');
+            if (textEls.length === 0) return '';
+            const texts = Array.from(textEls).map(t => t.textContent.trim()).filter(Boolean);
+            return texts.length > 0 ? texts.join(' ') : '';
           }
 
           // List items
@@ -611,11 +622,17 @@ export class MessageHandler {
 
   private async getInteractiveElements(
     correlationId: string,
-    tabId: number
+    tabId: number,
+    filter?: string,
+    limit?: number
   ): Promise<void> {
+    const safeFilter = filter ? JSON.stringify(filter.toLowerCase()) : "null";
+    const safeLimit = limit ?? 50;
     const results = await browser.tabs.executeScript(tabId, {
       code: `
       (function () {
+        const filterStr = ${safeFilter};
+        const maxElements = ${safeLimit};
         const selectors = 'a[href], button, input, textarea, select, [role="button"], [onclick], [tabindex]';
         const els = document.querySelectorAll(selectors);
         const seen = new Set();
@@ -738,7 +755,19 @@ export class MessageHandler {
 
           elements.push(entry);
         }
-        return elements;
+
+        let filtered = elements;
+        if (filterStr) {
+          filtered = elements.filter(el =>
+            (el.type && el.type.toLowerCase().includes(filterStr)) ||
+            (el.label && el.label.toLowerCase().includes(filterStr)) ||
+            (el.placeholder && el.placeholder.toLowerCase().includes(filterStr)) ||
+            (el.value && el.value.toLowerCase().includes(filterStr)) ||
+            (el.href && el.href.toLowerCase().includes(filterStr)) ||
+            (el.context && el.context.toLowerCase().includes(filterStr))
+          );
+        }
+        return filtered.slice(0, maxElements);
       })();
     `,
     });
@@ -1016,6 +1045,24 @@ export class MessageHandler {
     });
   }
 
+  private async takeScreenshot(
+    correlationId: string,
+    tabId: number
+  ): Promise<void> {
+    const tab = await browser.tabs.get(tabId);
+    await browser.tabs.update(tabId, { active: true });
+    // Wait briefly for tab to become active
+    await new Promise((r) => setTimeout(r, 100));
+    const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, {
+      format: "png",
+    });
+    await this.client.sendResourceToServer({
+      resource: "screenshot",
+      correlationId,
+      dataUrl,
+    });
+  }
+
   private async selectOption(
     correlationId: string,
     tabId: number,
@@ -1029,18 +1076,26 @@ export class MessageHandler {
       code: `
       (function () {
         const el = document.querySelector(${safeSelector});
-        if (!el || el.tagName !== 'SELECT') return false;
-        el.value = ${safeValue};
+        if (!el || el.tagName !== 'SELECT') return { success: false, error: 'No <select> element found' };
+        const value = ${safeValue};
+        const optionExists = Array.from(el.options).some(o => o.value === value);
+        if (!optionExists) return { success: false, error: 'No <option> with value "' + value + '"' };
+        el.value = value;
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
+        return { success: true };
       })();
     `,
     });
+    const result = results[0] || { success: false, error: "Script execution failed" };
+    if (!result.success && result.error) {
+      await this.client.sendErrorToServer(correlationId, result.error);
+      return;
+    }
     await this.client.sendResourceToServer({
       resource: "option-selected",
       correlationId,
-      success: !!results[0],
+      success: result.success,
     });
   }
 }

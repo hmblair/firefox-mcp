@@ -6,12 +6,9 @@ import {
   TabContentExtensionMessage,
   ServerMessageRequest,
   ExtensionError,
+  WS_PORTS,
 } from "../common";
 import { isPortInUse } from "./util";
-
-// Support up to two initializations of the MCP server by clients
-// More initializations will result in EDADDRINUSE errors
-const WS_PORTS = [8081, 8082];
 const EXTENSION_RESPONSE_TIMEOUT_MS = 60_000;
 
 interface ExtensionRequestResolver<T extends ExtensionMessage["resource"]> {
@@ -133,10 +130,12 @@ export class BrowserAPI {
     return await this.waitForResponse(correlationId, "tab-content");
   }
 
-  async getInteractiveElements(tabId: number) {
+  async getInteractiveElements(tabId: number, filter?: string, limit?: number) {
     const correlationId = this.sendMessageToExtension({
       cmd: "get-interactive-elements",
       tabId,
+      filter,
+      limit,
     });
     const message = await this.waitForResponse(correlationId, "interactive-elements");
     return message.elements;
@@ -244,6 +243,15 @@ export class BrowserAPI {
     });
     const message = await this.waitForResponse(correlationId, "selector-found");
     return { found: message.found };
+  }
+
+  async takeScreenshot(tabId: number): Promise<string> {
+    const correlationId = this.sendMessageToExtension({
+      cmd: "take-screenshot",
+      tabId,
+    });
+    const message = await this.waitForResponse(correlationId, "screenshot");
+    return message.dataUrl;
   }
 
   async searchTabContent(tabId: number, query: string, contextChars?: number) {

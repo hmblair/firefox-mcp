@@ -211,23 +211,8 @@ mcpServer.tool(
   },
   async ({ tabId, filter, limit }) => {
     try {
-      let elements = await browserApi.getInteractiveElements(tabId);
-      if (filter) {
-        const lower = filter.toLowerCase();
-        elements = elements.filter(
-          (el: { type?: string; label?: string; placeholder?: string; value?: string; href?: string; context?: string }) =>
-            el.type?.toLowerCase().includes(lower) ||
-            el.label?.toLowerCase().includes(lower) ||
-            el.placeholder?.toLowerCase().includes(lower) ||
-            el.value?.toLowerCase().includes(lower) ||
-            el.href?.toLowerCase().includes(lower) ||
-            el.context?.toLowerCase().includes(lower)
-        );
-      }
-      const totalCount = elements.length;
-      const maxElements = limit ?? 50;
-      elements = elements.slice(0, maxElements);
-      return toolResponse({ elements, totalCount });
+      const elements = await browserApi.getInteractiveElements(tabId, filter, limit ?? 50);
+      return toolResponse({ elements, totalCount: elements.length });
     } catch (error) {
       return toolError("listInteractiveElements", error);
     }
@@ -416,6 +401,26 @@ mcpServer.tool(
       );
     } catch (error) {
       return toolError("waitForSelector", error);
+    }
+  }
+);
+
+mcpServer.tool(
+  "takeScreenshot",
+  "Capture a screenshot of the visible area of a browser tab. Returns a PNG image. Useful when page content is rendered graphically (charts, canvas, etc.) and not available as DOM text.",
+  {
+    tabId: z.number().describe("The tab ID to capture"),
+  },
+  async ({ tabId }) => {
+    try {
+      const dataUrl = await browserApi.takeScreenshot(tabId);
+      // Strip the data URL prefix to get raw base64
+      const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+      return {
+        content: [{ type: "image" as const, data: base64, mimeType: "image/png" }],
+      };
+    } catch (error) {
+      return toolError("takeScreenshot", error);
     }
   }
 );

@@ -6,7 +6,7 @@
   "permissions": [
     "tabs",
     "activeTab",
-    "*://*/*"
+    "<all_urls>"
   ],
   "browser_specific_settings": {
     "gecko": {

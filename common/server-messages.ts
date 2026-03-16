@@ -37,6 +37,8 @@ export interface SearchTabContentServerMessage extends ServerMessageBase {
 export interface GetInteractiveElementsServerMessage extends ServerMessageBase {
   cmd: "get-interactive-elements";
   tabId: number;
+  filter?: string;
+  limit?: number;
 }
 
 export interface ClickElementServerMessage extends ServerMessageBase {
@@ -87,6 +89,11 @@ export interface WaitForSelectorServerMessage extends ServerMessageBase {
   timeoutMs?: number;
 }
 
+export interface TakeScreenshotServerMessage extends ServerMessageBase {
+  cmd: "take-screenshot";
+  tabId: number;
+}
+
 export type ServerMessage =
   | OpenLinkServerMessage
   | CloseTabsServerMessage
@@ -100,6 +107,7 @@ export type ServerMessage =
   | SelectOptionServerMessage
   | GetTabInfoServerMessage
   | FillFormServerMessage
-  | WaitForSelectorServerMessage;
+  | WaitForSelectorServerMessage
+  | TakeScreenshotServerMessage;
 
 export type ServerMessageRequest = ServerMessage & { correlationId: string };

@@ -7,7 +7,7 @@ import type {
 export class WebsocketClient {
   private socket: WebSocket | null = null;
   private readonly port: number;
-  private reconnectInterval: number = 2000; // 2 seconds
+  private reconnectInterval: number = 2000;
   private reconnectTimer: number | null = null;
   private messageCallback: ((data: ServerMessageRequest) => void) | null = null;
 
@@ -16,8 +16,15 @@ export class WebsocketClient {
   }
 
   public connect(): void {
-    console.log("Connecting to WebSocket server");
+    console.log("Connecting to WebSocket server at port", this.port);
+    this.createSocket();
 
+    if (this.reconnectTimer === null) {
+      this.startReconnectTimer();
+    }
+  }
+
+  private createSocket(): void {
     this.socket = new WebSocket(`ws://localhost:${this.port}`);
 
     this.socket.addEventListener("open", () => {
@@ -29,9 +36,7 @@ export class WebsocketClient {
     });
 
     this.socket.addEventListener("message", async (event) => {
-      if (!this.messageCallback) {
-        return;
-      }
+      if (!this.messageCallback) return;
       try {
         const message = JSON.parse(event.data);
         this.messageCallback(message);
@@ -44,11 +49,6 @@ export class WebsocketClient {
       console.error("WebSocket error:", event);
       this.socket && this.socket.close();
     });
-
-    // Start reconnection timer if not already running
-    if (this.reconnectTimer === null) {
-      this.startReconnectTimer();
-    }
   }
 
   public addMessageListener(
@@ -59,9 +59,13 @@ export class WebsocketClient {
 
   private startReconnectTimer(): void {
     this.reconnectTimer = window.setInterval(() => {
-      if (!this.socket || this.socket.readyState === WebSocket.CLOSED) {
+      if (
+        !this.socket ||
+        (this.socket.readyState !== WebSocket.OPEN &&
+          this.socket.readyState !== WebSocket.CONNECTING)
+      ) {
         console.log("[client] Attempting reconnection to WebSocket server");
-        this.connect();
+        this.createSocket();
       }
     }, this.reconnectInterval);
   }

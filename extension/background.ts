@@ -1,7 +1,6 @@
+import { WS_PORTS } from "../common";
 import { WebsocketClient } from "./client";
 import { MessageHandler } from "./message-handler";
-
-const WS_PORTS = [8081, 8082];
 
 function initClient(port: number) {
   const wsClient = new WebsocketClient(port);

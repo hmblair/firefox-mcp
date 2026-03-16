@@ -110,6 +110,11 @@ export interface SelectorFoundExtensionMessage extends ExtensionMessageBase {
   found: boolean;
 }
 
+export interface ScreenshotExtensionMessage extends ExtensionMessageBase {
+  resource: "screenshot";
+  dataUrl: string;
+}
+
 export type ExtensionMessage =
   | TabContentExtensionMessage
   | TabsExtensionMessage
@@ -123,7 +128,8 @@ export type ExtensionMessage =
   | OptionSelectedExtensionMessage
   | TabInfoExtensionMessage
   | FormFilledExtensionMessage
-  | SelectorFoundExtensionMessage;
+  | SelectorFoundExtensionMessage
+  | ScreenshotExtensionMessage;
 
 export interface ExtensionError {
   correlationId: string;
