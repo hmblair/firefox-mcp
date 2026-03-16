@@ -6,9 +6,8 @@ import {
   TabContentExtensionMessage,
   ServerMessageRequest,
   ExtensionError,
-  WS_PORTS,
+  WS_PORT,
 } from "../common";
-import { isPortInUse } from "./util";
 const EXTENSION_RESPONSE_TIMEOUT_MS = 60_000;
 
 interface ExtensionRequestResolver<T extends ExtensionMessage["resource"]> {
@@ -29,59 +28,58 @@ export class BrowserAPI {
   > = new Map();
 
   async init() {
-    let selectedPort = null;
+    return new Promise<number>((resolve, reject) => {
+      const server = new WebSocket.Server({
+        host: "localhost",
+        port: WS_PORT,
+      });
 
-    for (const port of WS_PORTS) {
-      if (!(await isPortInUse(port))) {
-        selectedPort = port;
-        break;
-      }
-    }
-    if (!selectedPort) {
-      throw new Error("All available ports are in use");
-    }
+      server.on("listening", () => {
+        this.wsServer = server;
+        console.error(`WebSocket server listening on port ${WS_PORT}`);
+        resolve(WS_PORT);
+      });
 
-    this.wsServer = new WebSocket.Server({
-      host: "localhost",
-      port: selectedPort,
-    });
-    this.wsServer.on("connection", async (connection) => {
-      this.ws = connection;
-      this.hasConnected = true;
-      this.hasDisconnected = false;
-      console.error("Firefox extension connected");
-
-      connection.on("close", () => {
-        if (this.ws === connection) {
-          this.hasDisconnected = true;
-          this.ws = null;
-          console.error("Firefox extension disconnected");
+      server.on("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "EADDRINUSE") {
+          reject(new Error(
+            `Port ${WS_PORT} is already in use. Another firefox-mcp instance may be running. Close other Claude Code sessions using firefox-mcp and try again.`
+          ));
         } else {
-          console.error("Stale Firefox extension connection closed (already replaced)");
+          reject(error);
         }
       });
 
-      connection.on("message", (message) => {
-        const decoded = JSON.parse(message.toString());
-        if (isErrorMessage(decoded)) {
-          this.handleExtensionError(decoded);
-          return;
-        }
-        this.handleDecodedExtensionMessage(decoded);
+      server.on("connection", async (connection) => {
+        this.ws = connection;
+        this.hasConnected = true;
+        this.hasDisconnected = false;
+        console.error("Firefox extension connected");
+
+        connection.on("close", () => {
+          if (this.ws === connection) {
+            this.hasDisconnected = true;
+            this.ws = null;
+            console.error("Firefox extension disconnected");
+          } else {
+            console.error("Stale Firefox extension connection closed (already replaced)");
+          }
+        });
+
+        connection.on("message", (message) => {
+          const decoded = JSON.parse(message.toString());
+          if (isErrorMessage(decoded)) {
+            this.handleExtensionError(decoded);
+            return;
+          }
+          this.handleDecodedExtensionMessage(decoded);
+        });
       });
     });
-    this.wsServer.on("error", (error) => {
-      console.error("WebSocket server error:", error);
-    });
-    return selectedPort;
   }
 
   close() {
     this.wsServer?.close();
-  }
-
-  getSelectedPort() {
-    return this.wsServer?.options.port;
   }
 
   async openLink(
