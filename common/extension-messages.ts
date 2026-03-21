@@ -119,6 +119,22 @@ export interface ScreenshotExtensionMessage extends ExtensionMessageBase {
   dataUrl: string;
 }
 
+export interface ClickAndTypedExtensionMessage extends ExtensionMessageBase {
+  resource: "click-and-typed";
+  success: boolean;
+  error?: string;
+}
+
+export interface ScriptResultExtensionMessage extends ExtensionMessageBase {
+  resource: "script-result";
+  result: unknown;
+}
+
+export interface KeypressSentExtensionMessage extends ExtensionMessageBase {
+  resource: "keypress-sent";
+  success: boolean;
+}
+
 export type ExtensionMessage =
   | TabContentExtensionMessage
   | TabsExtensionMessage
@@ -133,7 +149,10 @@ export type ExtensionMessage =
   | TabInfoExtensionMessage
   | FormFilledExtensionMessage
   | SelectorFoundExtensionMessage
-  | ScreenshotExtensionMessage;
+  | ScreenshotExtensionMessage
+  | ClickAndTypedExtensionMessage
+  | KeypressSentExtensionMessage
+  | ScriptResultExtensionMessage;
 
 export interface ExtensionError {
   correlationId: string;

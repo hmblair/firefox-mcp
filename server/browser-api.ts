@@ -272,6 +272,50 @@ export class BrowserAPI {
     return message.dataUrl;
   }
 
+  async clickAndType(
+    tabId: number,
+    selector: string,
+    text: string,
+    clearFirst: boolean,
+    submit: boolean
+  ): Promise<{ success: boolean; error?: string }> {
+    const correlationId = await this.sendMessageToExtension({
+      cmd: "click-and-type",
+      tabId,
+      selector,
+      text,
+      clearFirst,
+      submit,
+    });
+    const message = await this.waitForResponse(correlationId, "click-and-typed");
+    return { success: message.success, error: message.error };
+  }
+
+  async executeScript(tabId: number, code: string): Promise<unknown> {
+    const correlationId = await this.sendMessageToExtension({
+      cmd: "execute-script",
+      tabId,
+      code,
+    });
+    const message = await this.waitForResponse(correlationId, "script-result");
+    return message.result;
+  }
+
+  async sendKeypress(
+    tabId: number,
+    key: string,
+    modifiers?: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean }
+  ): Promise<{ success: boolean }> {
+    const correlationId = await this.sendMessageToExtension({
+      cmd: "send-keypress",
+      tabId,
+      key,
+      modifiers,
+    });
+    const message = await this.waitForResponse(correlationId, "keypress-sent");
+    return { success: message.success };
+  }
+
   async searchTabContent(tabId: number, query: string, contextChars?: number) {
     const correlationId = await this.sendMessageToExtension({
       cmd: "search-tab-content",

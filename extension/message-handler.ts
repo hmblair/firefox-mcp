@@ -8,6 +8,8 @@ import { typeIntoFieldScript } from "./injected/type-into-field";
 import { selectOptionScript } from "./injected/select-option";
 import { fillFormScript } from "./injected/fill-form";
 import { waitForSelectorScript } from "./injected/wait-for-selector";
+import { clickAndTypeScript } from "./injected/click-and-type";
+import { sendKeypressScript } from "./injected/send-keypress";
 
 function waitForTabLoad(tabId: number, timeoutMs = 30000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -150,6 +152,27 @@ export class MessageHandler {
         break;
       case "take-screenshot":
         await this.takeScreenshot(req.correlationId, req.tabId);
+        break;
+      case "execute-script":
+        await this.executeScript(req.correlationId, req.tabId, req.code);
+        break;
+      case "send-keypress":
+        await this.sendKeypress(
+          req.correlationId,
+          req.tabId,
+          req.key,
+          req.modifiers
+        );
+        break;
+      case "click-and-type":
+        await this.clickAndType(
+          req.correlationId,
+          req.tabId,
+          req.selector,
+          req.text,
+          req.clearFirst ?? true,
+          req.submit ?? false
+        );
         break;
       default:
         const _exhaustiveCheck: never = req;
@@ -485,6 +508,64 @@ export class MessageHandler {
       resource: "screenshot",
       correlationId,
       dataUrl,
+    });
+  }
+
+  private async clickAndType(
+    correlationId: string,
+    tabId: number,
+    selector: string,
+    text: string,
+    clearFirst: boolean,
+    submit: boolean
+  ): Promise<void> {
+    const results = await this.activateAndExecute(
+      tabId,
+      clickAndTypeScript(selector, text, clearFirst, submit)
+    );
+
+    const result = results[0] || { success: false, error: 'Script execution failed' };
+
+    if (result.success && submit) {
+      await waitForPossibleNavigation(tabId);
+    }
+
+    await this.client.sendResourceToServer({
+      resource: "click-and-typed",
+      correlationId,
+      success: result.success,
+      error: result.error,
+    });
+  }
+
+  private async executeScript(
+    correlationId: string,
+    tabId: number,
+    code: string
+  ): Promise<void> {
+    const results = await this.activateAndExecute(tabId, code);
+    await this.client.sendResourceToServer({
+      resource: "script-result",
+      correlationId,
+      result: results[0] ?? null,
+    });
+  }
+
+  private async sendKeypress(
+    correlationId: string,
+    tabId: number,
+    key: string,
+    modifiers?: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean }
+  ): Promise<void> {
+    const results = await this.activateAndExecute(
+      tabId,
+      sendKeypressScript(key, modifiers ?? {})
+    );
+    const result = results[0] || { success: false };
+    await this.client.sendResourceToServer({
+      resource: "keypress-sent",
+      correlationId,
+      success: result.success,
     });
   }
 

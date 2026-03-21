@@ -94,6 +94,28 @@ export interface TakeScreenshotServerMessage extends ServerMessageBase {
   tabId: number;
 }
 
+export interface ExecuteScriptServerMessage extends ServerMessageBase {
+  cmd: "execute-script";
+  tabId: number;
+  code: string;
+}
+
+export interface SendKeypressServerMessage extends ServerMessageBase {
+  cmd: "send-keypress";
+  tabId: number;
+  key: string;
+  modifiers?: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean };
+}
+
+export interface ClickAndTypeServerMessage extends ServerMessageBase {
+  cmd: "click-and-type";
+  tabId: number;
+  selector: string;
+  text: string;
+  clearFirst?: boolean;
+  submit?: boolean;
+}
+
 export type ServerMessage =
   | OpenLinkServerMessage
   | CloseTabsServerMessage
@@ -108,6 +130,9 @@ export type ServerMessage =
   | GetTabInfoServerMessage
   | FillFormServerMessage
   | WaitForSelectorServerMessage
-  | TakeScreenshotServerMessage;
+  | TakeScreenshotServerMessage
+  | ClickAndTypeServerMessage
+  | SendKeypressServerMessage
+  | ExecuteScriptServerMessage;
 
 export type ServerMessageRequest = ServerMessage & { correlationId: string };
