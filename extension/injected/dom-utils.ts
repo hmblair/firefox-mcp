@@ -13,6 +13,26 @@ function isHidden(el) {
   return false;
 }`;
 
+export const elementCheckFn = `
+function checkElement(el, selector) {
+  if (!el) return { success: false, error: 'No element found matching "' + selector + '"' };
+  var rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return { success: false, error: 'Element not visible (zero dimensions): "' + selector + '"' };
+  if (el.offsetParent === null && el.tagName !== 'BODY') return { success: false, error: 'Element not visible (hidden): "' + selector + '"' };
+  if (el.disabled) return { success: false, error: 'Element is disabled: "' + selector + '"' };
+  return null;
+}`;
+
+export const typeIntoElementFn = `
+function typeIntoElement(el, text, clearFirst) {
+  if (clearFirst) {
+    el.value = '';
+  }
+  el.value = clearFirst ? text : (el.value || '') + text;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}`;
+
 export const uniqueSelectorFn = `
 function uniqueSelector(el) {
   if (el.id) return '#' + CSS.escape(el.id);

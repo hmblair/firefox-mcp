@@ -3,6 +3,11 @@ export interface ExtensionMessageBase {
   correlationId: string;
 }
 
+export interface ActionResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface ContentSection {
   label: string;
   content: string;
@@ -70,29 +75,23 @@ export interface InteractiveElementsExtensionMessage extends ExtensionMessageBas
   elements: InteractiveElement[];
 }
 
-export interface ElementClickedExtensionMessage extends ExtensionMessageBase {
+export interface ElementClickedExtensionMessage extends ExtensionMessageBase, ActionResult {
   resource: "element-clicked";
-  success: boolean;
   navigated?: boolean;
   url?: string;
   title?: string;
-  error?: string;
 }
 
-export interface TextTypedExtensionMessage extends ExtensionMessageBase {
+export interface TextTypedExtensionMessage extends ExtensionMessageBase, ActionResult {
   resource: "text-typed";
-  success: boolean;
-  error?: string;
 }
 
 export interface TabReloadedExtensionMessage extends ExtensionMessageBase {
   resource: "tab-reloaded";
 }
 
-export interface OptionSelectedExtensionMessage extends ExtensionMessageBase {
+export interface OptionSelectedExtensionMessage extends ExtensionMessageBase, ActionResult {
   resource: "option-selected";
-  success: boolean;
-  error?: string;
 }
 
 export interface TabInfoExtensionMessage extends ExtensionMessageBase {
@@ -119,10 +118,8 @@ export interface ScreenshotExtensionMessage extends ExtensionMessageBase {
   dataUrl: string;
 }
 
-export interface ClickAndTypedExtensionMessage extends ExtensionMessageBase {
+export interface ClickAndTypedExtensionMessage extends ExtensionMessageBase, ActionResult {
   resource: "click-and-typed";
-  success: boolean;
-  error?: string;
 }
 
 export interface ScriptResultExtensionMessage extends ExtensionMessageBase {
@@ -130,9 +127,8 @@ export interface ScriptResultExtensionMessage extends ExtensionMessageBase {
   result: unknown;
 }
 
-export interface KeypressSentExtensionMessage extends ExtensionMessageBase {
+export interface KeypressSentExtensionMessage extends ExtensionMessageBase, ActionResult {
   resource: "keypress-sent";
-  success: boolean;
 }
 
 export type ExtensionMessage =

@@ -1,4 +1,4 @@
-import type { ServerMessageRequest } from "../common";
+import type { ServerMessageRequest, InteractiveElement } from "../common";
 import { WebsocketClient } from "./client";
 import { getTabContentScript } from "./injected/get-tab-content";
 import { getInteractiveElementsScript } from "./injected/get-interactive-elements";
@@ -330,7 +330,7 @@ export class MessageHandler {
     if (filter) {
       const lower = filter.toLowerCase();
       elements = elements.filter(
-        (el: any) =>
+        (el: InteractiveElement) =>
           (el.type && el.type.toLowerCase().includes(lower)) ||
           (el.label && el.label.toLowerCase().includes(lower)) ||
           (el.placeholder && el.placeholder.toLowerCase().includes(lower)) ||
@@ -452,7 +452,7 @@ export class MessageHandler {
   private async fillForm(
     correlationId: string,
     tabId: number,
-    fields: { selector: string; value: string }[],
+    fields: { selector: string; value?: string; checked?: boolean }[],
     submit?: string
   ): Promise<void> {
     const results = await this.activateAndExecute(
@@ -501,7 +501,7 @@ export class MessageHandler {
     await browser.tabs.update(tabId, { active: true });
     // Wait briefly for tab to become active
     await new Promise((r) => setTimeout(r, 100));
-    const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, {
+    const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId!, {
       format: "png",
     });
     await this.client.sendResourceToServer({

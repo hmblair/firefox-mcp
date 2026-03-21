@@ -1,7 +1,7 @@
 export const selectOptionScript = (selector: string, value: string, values?: string[]) => `
 (function() {
   const el = document.querySelector(${JSON.stringify(selector)});
-  if (!el || el.tagName !== 'SELECT') return { success: false, error: 'No <select> element found matching the selector' };
+  if (!el || el.tagName !== 'SELECT') return { success: false, error: 'No <select> element found matching "' + ${JSON.stringify(selector)} + '"' };
   const values = ${JSON.stringify(values ?? null)};
   if (values) {
     if (!el.multiple) return { success: false, error: 'Element is not a multi-select. Use "value" instead of "values".' };

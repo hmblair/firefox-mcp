@@ -1,3 +1,5 @@
+import { elementCheckFn, typeIntoElementFn } from "./dom-utils";
+
 export const typeIntoFieldScript = (
   selector: string,
   text: string,
@@ -5,18 +7,15 @@ export const typeIntoFieldScript = (
   submit: boolean
 ) => `
 (function() {
-  const el = document.querySelector(${JSON.stringify(selector)});
-  if (!el) return { success: false, error: 'No element found matching "' + ${JSON.stringify(selector)} + '"' };
+  ${elementCheckFn}
+  ${typeIntoElementFn}
+  var el = document.querySelector(${JSON.stringify(selector)});
+  var check = checkElement(el, ${JSON.stringify(selector)});
+  if (check) return check;
   el.focus();
-  const text = ${JSON.stringify(text)};
-  if (${clearFirst}) {
-    el.value = '';
-  }
-  el.value = ${clearFirst} ? text : el.value + text;
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
+  typeIntoElement(el, ${JSON.stringify(text)}, ${clearFirst});
   if (${submit}) {
-    const form = el.closest ? el.closest('form') : null;
+    var form = el.closest ? el.closest('form') : null;
     if (form) form.requestSubmit();
   }
   return { success: true };

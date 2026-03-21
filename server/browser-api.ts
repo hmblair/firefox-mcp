@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import {
+  ActionResult,
   ExtensionMessage,
   BrowserTab,
   ServerMessage,
@@ -166,7 +167,7 @@ export class BrowserAPI {
   async clickElement(
     tabId: number,
     selector: string
-  ): Promise<{ success: boolean; navigated?: boolean; url?: string; title?: string; error?: string }> {
+  ): Promise<ActionResult & { navigated?: boolean; url?: string; title?: string }> {
     const correlationId = await this.sendMessageToExtension({
       cmd: "click-element",
       tabId,
@@ -182,7 +183,7 @@ export class BrowserAPI {
     text: string,
     clearFirst: boolean,
     submit: boolean
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<ActionResult> {
     const correlationId = await this.sendMessageToExtension({
       cmd: "type-into-field",
       tabId,
@@ -209,7 +210,7 @@ export class BrowserAPI {
     selector: string,
     value: string,
     values?: string[]
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<ActionResult> {
     const correlationId = await this.sendMessageToExtension({
       cmd: "select-option",
       tabId,
@@ -278,7 +279,7 @@ export class BrowserAPI {
     text: string,
     clearFirst: boolean,
     submit: boolean
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<ActionResult> {
     const correlationId = await this.sendMessageToExtension({
       cmd: "click-and-type",
       tabId,
@@ -305,7 +306,7 @@ export class BrowserAPI {
     tabId: number,
     key: string,
     modifiers?: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean }
-  ): Promise<{ success: boolean }> {
+  ): Promise<ActionResult> {
     const correlationId = await this.sendMessageToExtension({
       cmd: "send-keypress",
       tabId,
