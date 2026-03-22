@@ -537,7 +537,7 @@ export interface FirefoxMcpServer {
 }
 
 interface PluginConfig {
-  plugins?: string[];
+  plugins?: Record<string, string>;
 }
 
 function loadPluginConfig(): PluginConfig {
@@ -562,24 +562,32 @@ function loadPluginConfig(): PluginConfig {
   return {};
 }
 
+function namespacedServer(mcpServer: McpServer, prefix: string): McpServer {
+  const wrapped = Object.create(mcpServer);
+  wrapped.tool = (name: string, ...args: unknown[]) => {
+    return mcpServer.tool(`${prefix}__${name}`, ...(args as [any]));
+  };
+  return wrapped;
+}
+
 function loadPlugins(mcpServer: McpServer, browserApi: BrowserAPI): void {
   const config = loadPluginConfig();
-  if (!config.plugins || config.plugins.length === 0) return;
+  if (!config.plugins || Object.keys(config.plugins).length === 0) return;
 
-  for (const pluginPath of config.plugins) {
+  for (const [name, pluginPath] of Object.entries(config.plugins)) {
     try {
       const resolved = require.resolve(pluginPath);
       const plugin = require(resolved);
       const registerFn = plugin.register ?? plugin.default?.register;
       if (typeof registerFn === "function") {
-        registerFn(mcpServer, browserApi);
-        console.error(`[plugin] Loaded: ${pluginPath}`);
+        registerFn(namespacedServer(mcpServer, name), browserApi);
+        console.error(`[plugin] Loaded: ${name} (${pluginPath})`);
       } else {
-        console.error(`[plugin] ${pluginPath}: no register function exported`);
+        console.error(`[plugin] ${name}: no register function exported`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[plugin] Failed to load ${pluginPath}: ${message}`);
+      console.error(`[plugin] Failed to load ${name}: ${message}`);
     }
   }
 }
