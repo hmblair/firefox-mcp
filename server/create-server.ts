@@ -432,16 +432,26 @@ function registerBuiltinTools(mcpServer: McpServer, browserApi: BrowserAPI) {
 
   mcpServer.tool(
     "takeScreenshot",
-    "Capture a screenshot of the visible area of a browser tab. Returns a PNG image. Useful when page content is rendered graphically (charts, canvas, etc.) and not available as DOM text.",
+    "Capture a screenshot of the visible area of a browser tab. Returns an image (PNG by default, JPEG if resized). Useful when page content is rendered graphically (charts, canvas, etc.) and not available as DOM text.",
     {
       tabId: z.coerce.number().describe("The tab ID to capture"),
+      maxWidth: z
+        .number()
+        .optional()
+        .describe("Resize to this maximum width in pixels (preserves aspect ratio, converts to JPEG)"),
+      quality: z
+        .number()
+        .optional()
+        .describe("JPEG quality 1-100 when resizing (default: 80)"),
     },
-    async ({ tabId }) => {
+    async ({ tabId, maxWidth, quality }) => {
       try {
-        const dataUrl = await browserApi.takeScreenshot(tabId);
-        const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+        const dataUrl = await browserApi.takeScreenshot(tabId, maxWidth, quality);
+        const isJpeg = dataUrl.startsWith("data:image/jpeg");
+        const mimeType = isJpeg ? "image/jpeg" : "image/png";
+        const base64 = dataUrl.replace(/^data:image\/(?:png|jpeg);base64,/, "");
         return {
-          content: [{ type: "image" as const, data: base64, mimeType: "image/png" }],
+          content: [{ type: "image" as const, data: base64, mimeType }],
         };
       } catch (error) {
         return toolError("takeScreenshot", error);

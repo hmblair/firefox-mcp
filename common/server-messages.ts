@@ -92,6 +92,8 @@ export interface WaitForSelectorServerMessage extends ServerMessageBase {
 export interface TakeScreenshotServerMessage extends ServerMessageBase {
   cmd: "take-screenshot";
   tabId: number;
+  maxWidth?: number;
+  quality?: number;
 }
 
 export interface ExecuteScriptServerMessage extends ServerMessageBase {

@@ -264,10 +264,12 @@ export class BrowserAPI {
     return { found: message.found };
   }
 
-  async takeScreenshot(tabId: number): Promise<string> {
+  async takeScreenshot(tabId: number, maxWidth?: number, quality?: number): Promise<string> {
     const correlationId = await this.sendMessageToExtension({
       cmd: "take-screenshot",
       tabId,
+      ...(maxWidth && { maxWidth }),
+      ...(quality && { quality }),
     });
     const message = await this.waitForResponse(correlationId, "screenshot");
     return message.dataUrl;

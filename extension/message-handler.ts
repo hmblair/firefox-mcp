@@ -151,7 +151,7 @@ export class MessageHandler {
         );
         break;
       case "take-screenshot":
-        await this.takeScreenshot(req.correlationId, req.tabId);
+        await this.takeScreenshot(req.correlationId, req.tabId, req.maxWidth, req.quality);
         break;
       case "execute-script":
         await this.executeScript(req.correlationId, req.tabId, req.code);
@@ -495,20 +495,56 @@ export class MessageHandler {
 
   private async takeScreenshot(
     correlationId: string,
-    tabId: number
+    tabId: number,
+    maxWidth?: number,
+    quality?: number
   ): Promise<void> {
     const tab = await browser.tabs.get(tabId);
     await browser.tabs.update(tabId, { active: true });
     // Wait briefly for tab to become active
     await new Promise((r) => setTimeout(r, 100));
-    const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId!, {
+    let dataUrl = await browser.tabs.captureVisibleTab(tab.windowId!, {
       format: "png",
     });
+    if (maxWidth) {
+      dataUrl = await this.resizeImage(dataUrl, maxWidth, quality);
+    }
     await this.client.sendResourceToServer({
       resource: "screenshot",
       correlationId,
       dataUrl,
     });
+  }
+
+  private async resizeImage(
+    dataUrl: string,
+    maxWidth: number,
+    quality?: number
+  ): Promise<string> {
+    const img = new Image();
+    const loaded = new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Failed to load image for resizing"));
+    });
+    img.src = dataUrl;
+    await loaded;
+
+    if (img.width <= maxWidth) {
+      return dataUrl;
+    }
+
+    const scale = maxWidth / img.width;
+    const canvas = new OffscreenCanvas(maxWidth, Math.round(img.height * scale));
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const q = Math.max(0, Math.min(1, (quality ?? 80) / 100));
+    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: q });
+    const buffer = await blob.arrayBuffer();
+    const base64 = btoa(
+      new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), "")
+    );
+    return `data:image/jpeg;base64,${base64}`;
   }
 
   private async clickAndType(
