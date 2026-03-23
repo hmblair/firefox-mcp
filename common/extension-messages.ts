@@ -28,6 +28,7 @@ export interface BrowserTab {
   url?: string;
   title?: string;
   lastAccessed?: number;
+  incognito?: boolean;
 }
 
 export interface TabsExtensionMessage extends ExtensionMessageBase {

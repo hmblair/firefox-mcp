@@ -76,10 +76,17 @@ function registerBuiltinTools(mcpServer: McpServer, browserApi: BrowserAPI) {
         .string()
         .optional()
         .describe("Filter tabs by substring match on URL or title"),
+      includePrivate: z
+        .boolean()
+        .default(false)
+        .describe("Include private/incognito tabs in results (default: false)"),
     },
-    async ({ query }) => {
+    async ({ query, includePrivate }) => {
       try {
         let openTabs = await browserApi.getTabList();
+        if (!includePrivate) {
+          openTabs = openTabs.filter((tab) => !tab.incognito);
+        }
         if (query) {
           const lower = query.toLowerCase();
           openTabs = openTabs.filter(
@@ -489,7 +496,7 @@ function registerBuiltinTools(mcpServer: McpServer, browserApi: BrowserAPI) {
         }
         const openTabs = await browserApi.getTabList();
         return {
-          resources: (openTabs ?? []).map((tab) => ({
+          resources: (openTabs ?? []).filter((tab) => !tab.incognito).map((tab) => ({
             uri: `browser://tab/${tab.id}/content`,
             name: tab.title || tab.url || "",
             mimeType: "text/plain",
