@@ -61,6 +61,11 @@ function installNativeHost() {
 function installClaude() {
   const { execFileSync } = require("child_process");
   try {
+    execFileSync("claude", ["mcp", "remove", "--scope", "user", SERVER_NAME], { stdio: "ignore" });
+  } catch {
+    // May not exist
+  }
+  try {
     execFileSync("claude", ["mcp", "add", "--transport", "http", "--scope", "user", SERVER_NAME, MCP_URL], { stdio: "inherit" });
   } catch {
     console.log(`  Failed to add ${SERVER_NAME} via claude CLI — add manually with:`);
@@ -72,7 +77,7 @@ function installOpencode() {
   const config = readJson(OPENCODE_CONFIG) || { $schema: "https://opencode.ai/config.json" };
   if (!config.mcp) config.mcp = {};
   config.mcp[SERVER_NAME] = {
-    type: "http",
+    type: "remote",
     url: MCP_URL,
   };
   writeJson(OPENCODE_CONFIG, config);
