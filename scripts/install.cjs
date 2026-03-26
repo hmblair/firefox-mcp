@@ -8,7 +8,9 @@ const nativeHostPath = path.resolve(__dirname, "..", "server", "dist", "native-h
 const home = process.env.HOME || process.env.USERPROFILE;
 
 const OPENCODE_CONFIG = path.join(home, ".config", "opencode", "opencode.json");
-const NATIVE_HOST_DIR = path.join(home, ".mozilla", "native-messaging-hosts");
+const NATIVE_HOST_DIR = process.platform === "darwin"
+  ? path.join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts")
+  : path.join(home, ".mozilla", "native-messaging-hosts");
 const NATIVE_HOST_MANIFEST = path.join(NATIVE_HOST_DIR, "firefox_mcp.json");
 
 const SERVER_NAME = "firefox-mcp";
@@ -42,7 +44,7 @@ function ask(question) {
 function installNativeHost() {
   // Write a wrapper script that node can execute
   const wrapperPath = path.resolve(__dirname, "..", "server", "dist", "native-host-wrapper.sh");
-  const wrapperContent = `#!/bin/sh\nexec node "${nativeHostPath}"\n`;
+  const wrapperContent = `#!/bin/sh\nexport PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"\nexec node "${nativeHostPath}"\n`;
   fs.writeFileSync(wrapperPath, wrapperContent, { mode: 0o755 });
 
   const manifest = {
