@@ -3,8 +3,10 @@
 An MCP server paired with a Firefox extension that enables AI assistants to control the user's browser.
 
 ```
-MCP Client (Claude, etc.) <--stdio--> MCP Server <--WebSocket--> Firefox Extension
+MCP Client (Claude, etc.) <--HTTP--> Native Host <--native messaging--> Firefox Extension
 ```
+
+The native messaging host is launched automatically by Firefox and serves MCP tools over HTTP. No manual server management required.
 
 ## Tools
 
@@ -15,18 +17,23 @@ MCP Client (Claude, etc.) <--stdio--> MCP Server <--WebSocket--> Firefox Extensi
 | `closeTabs` | Close browser tabs by their IDs (reports which tabs succeeded/failed) |
 | `listTabs` | List all open browser tabs, optionally filtered by URL or title |
 | `getTabInfo` | Get a tab's URL, title, and loading status without reading content |
+| `reloadTab` | Reload a browser tab, optionally bypassing cache |
 | **Reading** | |
 | `getTabContent` | Read a webpage's text content and links, optionally scoped to a CSS selector |
 | `searchTabContent` | Search for text in a webpage and return matching passages with context |
 | `listInteractiveElements` | List interactive elements with semantic types, labels, hrefs, and CSS selectors |
+| `takeScreenshot` | Capture a screenshot of the visible area of a tab |
 | **Interaction** | |
-| `clickElement` | Click an element by CSS selector (reports whether navigation occurred) |
+| `clickElement` | Click an element by CSS selector (reports navigation and new tabs) |
 | `typeIntoField` | Type text into an input field, optionally submitting the form |
+| `clickAndType` | Click an element and type into whatever receives focus |
 | `fillForm` | Fill multiple form fields in one call, with support for text, checkbox, radio, and dropdowns |
 | `selectOption` | Select an option in a `<select>` dropdown by value |
-| `pressKey` | Simulate a key press (Enter, Escape, Tab, ArrowDown, etc.) |
+| `sendKeypress` | Send a keyboard event (Enter, Escape, Tab, ArrowDown, etc.) with modifier keys |
 | **Synchronization** | |
 | `waitForSelector` | Wait for a CSS selector to appear on the page (for SPAs/dynamic content) |
+| **Advanced** | |
+| `executeScript` | Execute arbitrary JavaScript in a tab and return the result |
 
 Open tab contents are also available as MCP resources.
 
@@ -39,13 +46,13 @@ npm install
 make build
 ```
 
-### 2. Register with MCP clients
+### 2. Install
 
 ```sh
 make install
 ```
 
-This interactively registers the server with Claude Code (`~/.mcp.json`) and/or OpenCode.
+This registers the native messaging host with Firefox and configures the MCP server for Claude Code and/or OpenCode.
 
 To remove:
 
@@ -62,9 +69,17 @@ make uninstall
 
 To install permanently, use the built XPI at `dist/firefox-mcp.xpi` (requires signing for release Firefox, or use Firefox Developer Edition / Nightly with `xpinstall.signatures.required` set to `false`).
 
-## Security
+## Architecture
 
-The MCP server and extension communicate over a localhost-only WebSocket connection. Only processes on the local machine can connect.
+The system uses two communication channels:
+
+- **Extension to native host**: Firefox [native messaging](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_messaging) over stdin/stdout. Firefox launches and manages the host process automatically when the extension starts.
+- **MCP client to native host**: [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) on `http://localhost:8581/mcp`. Each tool call is a stateless HTTP request.
+
+This means:
+- No reconnection logic — the native host stays alive as long as Firefox is running.
+- Restarting the MCP client (e.g. Claude Code) reconnects instantly since HTTP is stateless.
+- Closing Firefox cleanly shuts down the native host.
 
 ## Development
 
@@ -77,20 +92,20 @@ make tag      # Tag current version in git
 ## Project Structure
 
 ```
-extension/          Firefox extension source (TypeScript)
-  manifest.json     Extension manifest
-  background.ts     Service worker entry point
-  client.ts         WebSocket client
-  message-handler.ts  Handles server commands
-server/             MCP server source (TypeScript)
-  server.ts         MCP tool definitions and entry point
-  browser-api.ts    WebSocket communication with extension
-  util.ts           Port utilities
-common/             Shared TypeScript interfaces
-  server-messages.ts  Server-to-extension message types
-  extension-messages.ts  Extension-to-server message types
-mcp-bridge.cjs      Executable entry point
+extension/              Firefox extension source (TypeScript)
+  manifest.json         Extension manifest
+  background.ts         Extension entry point
+  client.ts             Native messaging client
+  message-handler.ts    Handles server commands
+  injected/             Content scripts injected into web pages
+server/                 MCP server / native host source (TypeScript)
+  native-host.ts        Native messaging host entry point
+  create-server.ts      MCP tool definitions and HTTP server
+  browser-api.ts        Native messaging I/O with extension
+common/                 Shared TypeScript interfaces
+  server-messages.ts    Server-to-extension message types
+  extension-messages.ts Extension-to-server message types
 scripts/
-  install.cjs       MCP client config installer
-Makefile            Build and install targets
+  install.cjs           Native host and MCP client config installer
+Makefile                Build and install targets
 ```
