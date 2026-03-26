@@ -7,7 +7,6 @@ const readline = require("readline");
 const nativeHostPath = path.resolve(__dirname, "..", "server", "dist", "native-host.js");
 const home = process.env.HOME || process.env.USERPROFILE;
 
-const CLAUDE_CONFIG = path.join(home, ".mcp.json");
 const OPENCODE_CONFIG = path.join(home, ".config", "opencode", "opencode.json");
 const NATIVE_HOST_DIR = path.join(home, ".mozilla", "native-messaging-hosts");
 const NATIVE_HOST_MANIFEST = path.join(NATIVE_HOST_DIR, "firefox_mcp.json");
@@ -58,14 +57,13 @@ function installNativeHost() {
 }
 
 function installClaude() {
-  const config = readJson(CLAUDE_CONFIG) || {};
-  if (!config.mcpServers) config.mcpServers = {};
-  config.mcpServers[SERVER_NAME] = {
-    type: "http",
-    url: MCP_URL,
-  };
-  writeJson(CLAUDE_CONFIG, config);
-  console.log(`  Added ${SERVER_NAME} to ${CLAUDE_CONFIG}`);
+  const { execFileSync } = require("child_process");
+  try {
+    execFileSync("claude", ["mcp", "add", "--transport", "http", "--scope", "user", SERVER_NAME, MCP_URL], { stdio: "inherit" });
+  } catch {
+    console.log(`  Failed to add ${SERVER_NAME} via claude CLI — add manually with:`);
+    console.log(`    claude mcp add --transport http --scope user ${SERVER_NAME} ${MCP_URL}`);
+  }
 }
 
 function installOpencode() {
@@ -89,11 +87,12 @@ function uninstallNativeHost() {
 }
 
 function uninstallClaude() {
-  const config = readJson(CLAUDE_CONFIG);
-  if (!config?.mcpServers?.[SERVER_NAME]) return;
-  delete config.mcpServers[SERVER_NAME];
-  writeJson(CLAUDE_CONFIG, config);
-  console.log(`  Removed ${SERVER_NAME} from ${CLAUDE_CONFIG}`);
+  const { execFileSync } = require("child_process");
+  try {
+    execFileSync("claude", ["mcp", "remove", "--scope", "user", SERVER_NAME], { stdio: "inherit" });
+  } catch {
+    // May not be installed
+  }
 }
 
 function uninstallOpencode() {
