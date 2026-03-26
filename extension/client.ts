@@ -6,7 +6,7 @@ import type {
 import { WS_PORT } from "../common";
 
 const RECONNECT_INTERVAL_MS = 2000;
-const CONNECTING_TIMEOUT_MS = 5000;
+const CONNECTING_TIMEOUT_MS = 2000;
 
 export class WebsocketClient {
   private socket: WebSocket | null = null;

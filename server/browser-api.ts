@@ -167,14 +167,14 @@ export class BrowserAPI {
   async clickElement(
     tabId: number,
     selector: string
-  ): Promise<ActionResult & { navigated?: boolean; url?: string; title?: string }> {
+  ): Promise<ActionResult & { navigated?: boolean; url?: string; title?: string; openedTabId?: number; openedTabUrl?: string }> {
     const correlationId = await this.sendMessageToExtension({
       cmd: "click-element",
       tabId,
       selector,
     });
     const message = await this.waitForResponse(correlationId, "element-clicked");
-    return { success: message.success, navigated: message.navigated, url: message.url, title: message.title, error: message.error };
+    return { success: message.success, navigated: message.navigated, url: message.url, title: message.title, openedTabId: message.openedTabId, openedTabUrl: message.openedTabUrl, error: message.error };
   }
 
   async typeIntoField(
@@ -341,28 +341,17 @@ export class BrowserAPI {
       );
     }
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      // If the server just started, wait briefly for the extension to connect
-      if (!this.hasConnected && !this.hasDisconnected && this.initializedAt) {
-        const age = Date.now() - this.initializedAt;
-        if (age < 10000) {
-          await this.waitForConnection(10000 - age);
-        }
-      }
+      await this.waitForConnection(15000);
     }
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       if (this.hasDisconnected) {
         throw new Error(
-          "Firefox extension was connected but disconnected. Check that Firefox is still running and reload the extension in about:debugging."
-        );
-      } else if (!this.hasConnected) {
-        const uptime = this.initializedAt
-          ? `${((Date.now() - this.initializedAt) / 1000).toFixed(1)}s`
-          : "unknown";
-        throw new Error(
-          `Firefox extension has not connected (server uptime: ${uptime}). Make sure Firefox is running and the extension is loaded (about:debugging > Load Temporary Add-on).`
+          "Firefox extension was connected but disconnected and has not reconnected. Check that Firefox is still running."
         );
       }
-      throw new Error("Firefox extension is not connected.");
+      throw new Error(
+        "Firefox extension has not connected. Make sure Firefox is running and the extension is installed."
+      );
     }
 
     const correlationId = Math.random().toString(36).substring(2);

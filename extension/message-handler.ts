@@ -358,6 +358,9 @@ export class MessageHandler {
     await browser.tabs.update(tabId, { active: true });
     const tabBefore = await browser.tabs.get(tabId);
     const urlBefore = tabBefore.url;
+    const allTabsBefore = await browser.tabs.query({});
+    const tabIdsBefore = new Set(allTabsBefore.map((t) => t.id));
+
     const results = await browser.tabs.executeScript(tabId, {
       code: clickElementScript(selector),
     });
@@ -370,6 +373,8 @@ export class MessageHandler {
     let navigated = false;
     let url: string | undefined;
     let title: string | undefined;
+    let openedTabId: number | undefined;
+    let openedTabUrl: string | undefined;
 
     if (result.success) {
       await waitForPossibleNavigation(tabId);
@@ -381,6 +386,23 @@ export class MessageHandler {
       } catch {
         // tab may have closed
       }
+
+      // Check if a new tab was opened
+      const allTabsAfter = await browser.tabs.query({});
+      for (const t of allTabsAfter) {
+        if (t.id !== undefined && !tabIdsBefore.has(t.id)) {
+          openedTabId = t.id;
+          // Wait for the new tab to finish loading
+          if (t.status === "loading") {
+            await waitForTabLoad(t.id);
+            const loaded = await browser.tabs.get(t.id);
+            openedTabUrl = loaded.url;
+          } else {
+            openedTabUrl = t.url;
+          }
+          break;
+        }
+      }
     }
 
     await this.client.sendResourceToServer({
@@ -390,6 +412,8 @@ export class MessageHandler {
       navigated,
       url,
       title,
+      openedTabId,
+      openedTabUrl,
       error: result.error,
     });
   }

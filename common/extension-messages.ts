@@ -80,6 +80,8 @@ export interface ElementClickedExtensionMessage extends ExtensionMessageBase, Ac
   navigated?: boolean;
   url?: string;
   title?: string;
+  openedTabId?: number;
+  openedTabUrl?: string;
 }
 
 export interface TextTypedExtensionMessage extends ExtensionMessageBase, ActionResult {

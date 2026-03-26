@@ -208,6 +208,9 @@ function registerBuiltinTools(mcpServer: McpServer, browserApi: BrowserAPI) {
             data.url = result.url;
             data.title = result.title;
           }
+          if (result.openedTabId !== undefined) {
+            data.openedTab = { tabId: result.openedTabId, url: result.openedTabUrl };
+          }
           return toolResponse(data);
         }
         return toolResponse({ success: false, error: result.error || "Unknown error" }, true);
@@ -455,6 +458,23 @@ function registerBuiltinTools(mcpServer: McpServer, browserApi: BrowserAPI) {
         };
       } catch (error) {
         return toolError("takeScreenshot", error);
+      }
+    }
+  );
+
+  mcpServer.tool(
+    "executeScript",
+    "Execute arbitrary JavaScript in a browser tab and return the result. Use this as a last resort when other tools don't provide what you need (e.g. inspecting DOM structure, reading computed styles, or triggering complex interactions).",
+    {
+      tabId: z.coerce.number().describe("The tab ID to execute the script in"),
+      code: z.string().describe("JavaScript code to execute. Must be an expression or IIFE that returns a JSON-serializable value."),
+    },
+    async ({ tabId, code }) => {
+      try {
+        const result = await browserApi.executeScript(tabId, code);
+        return toolResponse({ success: true, result });
+      } catch (error) {
+        return toolError("executeScript", error);
       }
     }
   );
