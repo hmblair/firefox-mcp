@@ -5,52 +5,55 @@ import type {
 } from "../common";
 import { WS_PORT } from "../common";
 
-const RECONNECT_INTERVAL_MS = 2000;
-const CONNECTING_TIMEOUT_MS = 2000;
+const RECONNECT_DELAY_MS = 500;
 
 export class WebsocketClient {
   private socket: WebSocket | null = null;
   private reconnectTimer: number | null = null;
-  private connectingSince: number | null = null;
   private messageCallback: ((data: ServerMessageRequest) => void) | null = null;
+  private attemptCount = 0;
+  private disconnectedAt: number | null = null;
 
   public connect(): void {
-    console.log(`Connecting to WebSocket server on port ${WS_PORT}`);
+    console.log(`[client] Connecting to WebSocket server on port ${WS_PORT}`);
     this.createSocket();
-    this.reconnectTimer = window.setInterval(() => {
-      if (
-        this.socket?.readyState === WebSocket.CONNECTING &&
-        this.connectingSince &&
-        Date.now() - this.connectingSince > CONNECTING_TIMEOUT_MS
-      ) {
-        console.warn("[client] Connection attempt timed out, aborting");
-        this.socket.close();
-        this.socket = null;
-        this.connectingSince = null;
-      }
+  }
 
-      if (
-        !this.socket ||
-        (this.socket.readyState !== WebSocket.OPEN &&
-          this.socket.readyState !== WebSocket.CONNECTING)
-      ) {
-        console.log("[client] Attempting reconnection to WebSocket server");
-        this.createSocket();
-      }
-    }, RECONNECT_INTERVAL_MS);
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer !== null) return;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.attemptCount++;
+      const elapsed = this.disconnectedAt
+        ? ((Date.now() - this.disconnectedAt) / 1000).toFixed(1)
+        : "?";
+      console.log(`[client] Reconnect attempt ${this.attemptCount} (disconnected ${elapsed}s ago)`);
+      this.createSocket();
+    }, RECONNECT_DELAY_MS);
   }
 
   private createSocket(): void {
     this.socket = new WebSocket(`ws://localhost:${WS_PORT}`);
-    this.connectingSince = Date.now();
 
     this.socket.addEventListener("open", () => {
-      this.connectingSince = null;
-      console.log(`Connected to WebSocket server on port ${WS_PORT}`);
+      if (this.attemptCount > 0) {
+        const elapsed = this.disconnectedAt
+          ? ((Date.now() - this.disconnectedAt) / 1000).toFixed(1)
+          : "?";
+        console.log(`[client] Reconnected after ${this.attemptCount} attempt(s) (${elapsed}s)`);
+      } else {
+        console.log(`[client] Connected to WebSocket server on port ${WS_PORT}`);
+      }
+      this.attemptCount = 0;
+      this.disconnectedAt = null;
     });
 
     this.socket.addEventListener("close", () => {
       this.socket = null;
+      if (this.disconnectedAt === null) {
+        this.disconnectedAt = Date.now();
+      }
+      this.scheduleReconnect();
     });
 
     this.socket.addEventListener("message", async (event) => {
@@ -59,13 +62,14 @@ export class WebsocketClient {
         const message = JSON.parse(event.data);
         this.messageCallback(message);
       } catch (error) {
-        console.error("Failed to parse message:", error);
+        console.error("[client] Failed to parse message:", error);
       }
     });
 
-    this.socket.addEventListener("error", (event) => {
-      console.error("WebSocket error:", event);
-      this.socket && this.socket.close();
+    this.socket.addEventListener("error", () => {
+      if (this.socket) {
+        this.socket.close();
+      }
     });
   }
 
