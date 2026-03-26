@@ -4,13 +4,17 @@ const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
 
-const bridgePath = path.resolve(__dirname, "..", "mcp-bridge.cjs");
+const nativeHostPath = path.resolve(__dirname, "..", "server", "dist", "native-host.js");
 const home = process.env.HOME || process.env.USERPROFILE;
 
 const CLAUDE_CONFIG = path.join(home, ".mcp.json");
 const OPENCODE_CONFIG = path.join(home, ".config", "opencode", "opencode.json");
+const NATIVE_HOST_DIR = path.join(home, ".mozilla", "native-messaging-hosts");
+const NATIVE_HOST_MANIFEST = path.join(NATIVE_HOST_DIR, "firefox_mcp.json");
 
 const SERVER_NAME = "firefox-mcp";
+const HTTP_PORT = 8581;
+const MCP_URL = `http://localhost:${HTTP_PORT}/mcp`;
 
 function readJson(filePath) {
   try {
@@ -36,12 +40,29 @@ function ask(question) {
   });
 }
 
+function installNativeHost() {
+  // Write a wrapper script that node can execute
+  const wrapperPath = path.resolve(__dirname, "..", "server", "dist", "native-host-wrapper.sh");
+  const wrapperContent = `#!/bin/sh\nexec node "${nativeHostPath}"\n`;
+  fs.writeFileSync(wrapperPath, wrapperContent, { mode: 0o755 });
+
+  const manifest = {
+    name: "firefox_mcp",
+    description: "Firefox MCP native messaging host",
+    path: wrapperPath,
+    type: "stdio",
+    allowed_extensions: ["firefox-mcp@hmblair.dev"],
+  };
+  writeJson(NATIVE_HOST_MANIFEST, manifest);
+  console.log(`  Installed native messaging host manifest to ${NATIVE_HOST_MANIFEST}`);
+}
+
 function installClaude() {
   const config = readJson(CLAUDE_CONFIG) || {};
   if (!config.mcpServers) config.mcpServers = {};
   config.mcpServers[SERVER_NAME] = {
-    command: "node",
-    args: [bridgePath],
+    type: "http",
+    url: MCP_URL,
   };
   writeJson(CLAUDE_CONFIG, config);
   console.log(`  Added ${SERVER_NAME} to ${CLAUDE_CONFIG}`);
@@ -51,11 +72,20 @@ function installOpencode() {
   const config = readJson(OPENCODE_CONFIG) || { $schema: "https://opencode.ai/config.json" };
   if (!config.mcp) config.mcp = {};
   config.mcp[SERVER_NAME] = {
-    type: "local",
-    command: ["node", bridgePath],
+    type: "http",
+    url: MCP_URL,
   };
   writeJson(OPENCODE_CONFIG, config);
   console.log(`  Added ${SERVER_NAME} to ${OPENCODE_CONFIG}`);
+}
+
+function uninstallNativeHost() {
+  try {
+    fs.unlinkSync(NATIVE_HOST_MANIFEST);
+    console.log(`  Removed ${NATIVE_HOST_MANIFEST}`);
+  } catch {
+    // file doesn't exist
+  }
 }
 
 function uninstallClaude() {
@@ -76,6 +106,11 @@ function uninstallOpencode() {
 
 async function install() {
   console.log();
+
+  // Always install native messaging host
+  installNativeHost();
+
+  console.log();
   if (await ask("Install into Claude Code (~/.mcp.json)? [Y/n] ")) {
     installClaude();
   } else {
@@ -93,6 +128,7 @@ async function install() {
 
 function uninstall() {
   console.log();
+  uninstallNativeHost();
   uninstallClaude();
   uninstallOpencode();
   console.log();

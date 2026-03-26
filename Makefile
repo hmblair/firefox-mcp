@@ -31,3 +31,4 @@ clean:
 	rm -rf dist/
 	rm -rf server/dist/
 	rm -rf extension/dist/
+

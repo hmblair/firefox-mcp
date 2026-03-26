@@ -1,5 +1,5 @@
 import type { ServerMessageRequest, InteractiveElement } from "../common";
-import { WebsocketClient } from "./client";
+import { NativeClient } from "./client";
 import { getTabContentScript } from "./injected/get-tab-content";
 import { getInteractiveElementsScript } from "./injected/get-interactive-elements";
 import { searchTabContentScript } from "./injected/search-tab-content";
@@ -46,9 +46,9 @@ async function waitForPossibleNavigation(tabId: number): Promise<void> {
 }
 
 export class MessageHandler {
-  private client: WebsocketClient;
+  private client: NativeClient;
 
-  constructor(client: WebsocketClient) {
+  constructor(client: NativeClient) {
     this.client = client;
   }
 

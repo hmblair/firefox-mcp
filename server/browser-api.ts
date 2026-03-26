@@ -1,4 +1,3 @@
-import WebSocket from "ws";
 import {
   ActionResult,
   ExtensionMessage,
@@ -7,7 +6,6 @@ import {
   TabContentExtensionMessage,
   ServerMessageRequest,
   ExtensionError,
-  WS_PORT,
 } from "../common";
 
 const EXTENSION_RESPONSE_TIMEOUT_MS = 60_000;
@@ -18,89 +16,76 @@ interface ExtensionRequestResolver<T extends ExtensionMessage["resource"]> {
   reject: (reason?: string) => void;
 }
 
-export class BrowserAPI {
-  private ws: WebSocket | null = null;
-  private wsServer: WebSocket.Server | null = null;
-  private hasConnected = false;
-  private hasDisconnected = false;
+/**
+ * Read native messaging frames from stdin.
+ * Each frame: 4-byte little-endian length prefix + UTF-8 JSON body.
+ */
+function startNativeMessageReader(onMessage: (msg: unknown) => void) {
+  let buffer = Buffer.alloc(0);
 
+  process.stdin.on("data", (chunk: Buffer) => {
+    buffer = Buffer.concat([buffer, chunk]);
+
+    while (buffer.length >= 4) {
+      const messageLength = buffer.readUInt32LE(0);
+      if (buffer.length < 4 + messageLength) break;
+
+      const json = buffer.subarray(4, 4 + messageLength).toString("utf-8");
+      buffer = buffer.subarray(4 + messageLength);
+
+      try {
+        onMessage(JSON.parse(json));
+      } catch (error) {
+        console.error("[native] Failed to parse message:", error);
+      }
+    }
+  });
+}
+
+/**
+ * Write a native messaging frame to stdout.
+ */
+function writeNativeMessage(msg: unknown): void {
+  const json = JSON.stringify(msg);
+  const body = Buffer.from(json, "utf-8");
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(body.length, 0);
+  process.stdout.write(header);
+  process.stdout.write(body);
+}
+
+export class BrowserAPI {
   private extensionRequestMap: Map<
     string,
     ExtensionRequestResolver<ExtensionMessage["resource"]>
   > = new Map();
 
-  private initPromise: Promise<number> | null = null;
-  private initializedAt: number | null = null;
+  private connected = false;
 
-  private async ensureInitialized(): Promise<void> {
-    if (this.wsServer) return;
-    if (!this.initPromise) {
-      this.initPromise = this.init().catch((err) => {
-        this.initPromise = null;
-        throw err;
-      });
-    }
-    await this.initPromise;
-  }
-
-  private async init() {
-    return new Promise<number>((resolve, reject) => {
-      const server = new WebSocket.Server({
-        host: "localhost",
-        port: WS_PORT,
-      });
-
-      server.on("listening", () => {
-        this.wsServer = server;
-        this.initializedAt = Date.now();
-        console.error(`WebSocket server listening on port ${WS_PORT}`);
-        resolve(WS_PORT);
-      });
-
-      server.on("error", (error: NodeJS.ErrnoException) => {
-        if (error.code === "EADDRINUSE") {
-          reject(new Error(
-            `Port ${WS_PORT} is already in use. Another firefox-mcp instance may be running. Close other Claude Code sessions using firefox-mcp and try again.`
-          ));
-        } else {
-          reject(error);
-        }
-      });
-
-      server.on("connection", async (connection) => {
-        this.ws = connection;
-        this.hasConnected = true;
-        this.hasDisconnected = false;
-        console.error("Firefox extension connected");
-
-        connection.on("close", () => {
-          if (this.ws === connection) {
-            this.hasDisconnected = true;
-            this.ws = null;
-            console.error("Firefox extension disconnected");
-          } else {
-            console.error("Stale Firefox extension connection closed (already replaced)");
-          }
-        });
-
-        connection.on("message", (message) => {
-          const decoded = JSON.parse(message.toString());
-          if (isErrorMessage(decoded)) {
-            this.handleExtensionError(decoded);
-            return;
-          }
-          this.handleDecodedExtensionMessage(decoded);
-        });
-      });
+  constructor() {
+    startNativeMessageReader((msg) => {
+      if (isErrorMessage(msg)) {
+        this.handleExtensionError(msg);
+        return;
+      }
+      this.handleDecodedExtensionMessage(msg as ExtensionMessage);
     });
+
+    process.stdin.on("end", () => {
+      this.connected = false;
+      console.error("[native] Extension disconnected (stdin closed)");
+    });
+
+    this.connected = true;
+    console.error("[native] Native messaging initialized");
   }
 
   get isInitialized(): boolean {
-    return this.wsServer !== null;
+    return this.connected;
   }
 
   close() {
-    this.wsServer?.close();
+    // Nothing to close — stdin/stdout are managed by the OS
   }
 
   async openLink(
@@ -108,7 +93,7 @@ export class BrowserAPI {
     tabId?: number,
     newTab?: boolean
   ): Promise<number | undefined> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "open-link",
       url,
       tabId,
@@ -119,7 +104,7 @@ export class BrowserAPI {
   }
 
   async closeTabs(tabIds: number[]): Promise<{ closedTabIds: number[]; failedTabIds: number[] }> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "close-tabs",
       tabIds,
     });
@@ -128,7 +113,7 @@ export class BrowserAPI {
   }
 
   async getTabList(): Promise<BrowserTab[]> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "get-tab-list",
     });
     const message = await this.waitForResponse(correlationId, "tabs");
@@ -142,7 +127,7 @@ export class BrowserAPI {
     includeLinks?: boolean,
     maxLength?: number
   ): Promise<TabContentExtensionMessage> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "get-tab-content",
       tabId,
       offset,
@@ -154,7 +139,7 @@ export class BrowserAPI {
   }
 
   async getInteractiveElements(tabId: number, filter?: string, limit?: number) {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "get-interactive-elements",
       tabId,
       filter,
@@ -168,7 +153,7 @@ export class BrowserAPI {
     tabId: number,
     selector: string
   ): Promise<ActionResult & { navigated?: boolean; url?: string; title?: string; openedTabId?: number; openedTabUrl?: string }> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "click-element",
       tabId,
       selector,
@@ -184,7 +169,7 @@ export class BrowserAPI {
     clearFirst: boolean,
     submit: boolean
   ): Promise<ActionResult> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "type-into-field",
       tabId,
       selector,
@@ -197,7 +182,7 @@ export class BrowserAPI {
   }
 
   async reloadTab(tabId: number, bypassCache: boolean): Promise<void> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "reload-tab",
       tabId,
       bypassCache,
@@ -211,7 +196,7 @@ export class BrowserAPI {
     value: string,
     values?: string[]
   ): Promise<ActionResult> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "select-option",
       tabId,
       selector,
@@ -226,7 +211,7 @@ export class BrowserAPI {
   }
 
   async getTabInfo(tabId: number): Promise<{ url: string; title: string; status: string }> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "get-tab-info",
       tabId,
     });
@@ -239,7 +224,7 @@ export class BrowserAPI {
     fields: { selector: string; value?: string; checked?: boolean }[],
     submit?: string
   ): Promise<{ results: { selector: string; success: boolean; error?: string }[]; submitted: boolean }> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "fill-form",
       tabId,
       fields,
@@ -254,7 +239,7 @@ export class BrowserAPI {
     selector: string,
     timeoutMs?: number
   ): Promise<{ found: boolean }> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "wait-for-selector",
       tabId,
       selector,
@@ -265,7 +250,7 @@ export class BrowserAPI {
   }
 
   async takeScreenshot(tabId: number, maxWidth?: number, quality?: number): Promise<string> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "take-screenshot",
       tabId,
       ...(maxWidth && { maxWidth }),
@@ -282,7 +267,7 @@ export class BrowserAPI {
     clearFirst: boolean,
     submit: boolean
   ): Promise<ActionResult> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "click-and-type",
       tabId,
       selector,
@@ -295,7 +280,7 @@ export class BrowserAPI {
   }
 
   async executeScript(tabId: number, code: string): Promise<unknown> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "execute-script",
       tabId,
       code,
@@ -309,7 +294,7 @@ export class BrowserAPI {
     key: string,
     modifiers?: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean }
   ): Promise<ActionResult> {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "send-keypress",
       tabId,
       key,
@@ -320,7 +305,7 @@ export class BrowserAPI {
   }
 
   async searchTabContent(tabId: number, query: string, contextChars?: number) {
-    const correlationId = await this.sendMessageToExtension({
+    const correlationId = this.sendMessageToExtension({
       cmd: "search-tab-content",
       tabId,
       query,
@@ -333,24 +318,10 @@ export class BrowserAPI {
     return message.matches;
   }
 
-  private async sendMessageToExtension(message: ServerMessage): Promise<string> {
-    await this.ensureInitialized();
-    if (!this.wsServer) {
+  private sendMessageToExtension(message: ServerMessage): string {
+    if (!this.connected) {
       throw new Error(
-        "Browser API failed to initialize — no WebSocket port available. Another firefox-mcp instance may already be running. Close other Claude Code sessions using firefox-mcp and try again."
-      );
-    }
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      await this.waitForConnection(15000);
-    }
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      if (this.hasDisconnected) {
-        throw new Error(
-          "Firefox extension was connected but disconnected and has not reconnected. Check that Firefox is still running."
-        );
-      }
-      throw new Error(
-        "Firefox extension has not connected. Make sure Firefox is running and the extension is installed."
+        "Firefox extension is not connected. Make sure Firefox is running and the extension is installed."
       );
     }
 
@@ -358,7 +329,7 @@ export class BrowserAPI {
     const req: ServerMessageRequest = { ...message, correlationId };
 
     console.error(`[browser-api] Sending ${req.cmd} (id: ${correlationId})`);
-    this.ws.send(JSON.stringify(req));
+    writeNativeMessage(req);
 
     return correlationId;
   }
@@ -392,26 +363,6 @@ export class BrowserAPI {
     console.error(`[browser-api] Extension error (id: ${correlationId}): ${errorMessage}`);
     this.extensionRequestMap.delete(correlationId);
     entry.reject(errorMessage);
-  }
-
-  private waitForConnection(timeoutMs: number): Promise<void> {
-    return new Promise((resolve) => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        resolve();
-        return;
-      }
-      const check = setInterval(() => {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          clearInterval(check);
-          clearTimeout(timeout);
-          resolve();
-        }
-      }, 100);
-      const timeout = setTimeout(() => {
-        clearInterval(check);
-        resolve();
-      }, timeoutMs);
-    });
   }
 
   private async waitForResponse<T extends ExtensionMessage["resource"]>(

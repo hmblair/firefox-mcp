@@ -1,12 +1,12 @@
-import { WebsocketClient } from "./client";
+import { NativeClient } from "./client";
 import { MessageHandler } from "./message-handler";
 
-const wsClient = new WebsocketClient();
-const messageHandler = new MessageHandler(wsClient);
+const client = new NativeClient();
+const messageHandler = new MessageHandler(client);
 
-wsClient.connect();
+client.connect();
 
-wsClient.addMessageListener(async (message) => {
+client.addMessageListener(async (message) => {
   console.log("Message from server:", message);
   await messageHandler.handleDecodedMessage(message);
 });

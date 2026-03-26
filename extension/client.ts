@@ -3,74 +3,36 @@ import type {
   ExtensionError,
   ServerMessageRequest,
 } from "../common";
-import { WS_PORT } from "../common";
+import { NATIVE_APP_NAME } from "../common";
 
-const RECONNECT_DELAY_MS = 500;
-
-export class WebsocketClient {
-  private socket: WebSocket | null = null;
-  private reconnectTimer: number | null = null;
+export class NativeClient {
+  private port: browser.runtime.Port | null = null;
   private messageCallback: ((data: ServerMessageRequest) => void) | null = null;
-  private attemptCount = 0;
-  private disconnectedAt: number | null = null;
 
   public connect(): void {
-    console.log(`[client] Connecting to WebSocket server on port ${WS_PORT}`);
-    this.createSocket();
-  }
+    console.log(`[client] Connecting to native host: ${NATIVE_APP_NAME}`);
+    this.port = browser.runtime.connectNative(NATIVE_APP_NAME);
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer !== null) return;
-    this.reconnectTimer = window.setTimeout(() => {
-      this.reconnectTimer = null;
-      this.attemptCount++;
-      const elapsed = this.disconnectedAt
-        ? ((Date.now() - this.disconnectedAt) / 1000).toFixed(1)
-        : "?";
-      console.log(`[client] Reconnect attempt ${this.attemptCount} (disconnected ${elapsed}s ago)`);
-      this.createSocket();
-    }, RECONNECT_DELAY_MS);
-  }
-
-  private createSocket(): void {
-    this.socket = new WebSocket(`ws://localhost:${WS_PORT}`);
-
-    this.socket.addEventListener("open", () => {
-      if (this.attemptCount > 0) {
-        const elapsed = this.disconnectedAt
-          ? ((Date.now() - this.disconnectedAt) / 1000).toFixed(1)
-          : "?";
-        console.log(`[client] Reconnected after ${this.attemptCount} attempt(s) (${elapsed}s)`);
-      } else {
-        console.log(`[client] Connected to WebSocket server on port ${WS_PORT}`);
-      }
-      this.attemptCount = 0;
-      this.disconnectedAt = null;
-    });
-
-    this.socket.addEventListener("close", () => {
-      this.socket = null;
-      if (this.disconnectedAt === null) {
-        this.disconnectedAt = Date.now();
-      }
-      this.scheduleReconnect();
-    });
-
-    this.socket.addEventListener("message", async (event) => {
+    this.port.onMessage.addListener((message: unknown) => {
       if (!this.messageCallback) return;
       try {
-        const message = JSON.parse(event.data);
-        this.messageCallback(message);
+        this.messageCallback(message as ServerMessageRequest);
       } catch (error) {
-        console.error("[client] Failed to parse message:", error);
+        console.error("[client] Failed to handle message:", error);
       }
     });
 
-    this.socket.addEventListener("error", () => {
-      if (this.socket) {
-        this.socket.close();
+    this.port.onDisconnect.addListener(() => {
+      const error = browser.runtime.lastError;
+      if (error) {
+        console.error(`[client] Native host disconnected with error: ${error.message ?? error}`);
+      } else {
+        console.error("[client] Native host disconnected");
       }
+      this.port = null;
     });
+
+    console.log("[client] Connected to native host");
   }
 
   public addMessageListener(
@@ -80,25 +42,25 @@ export class WebsocketClient {
   }
 
   public async sendResourceToServer(resource: ExtensionMessage): Promise<void> {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.warn(`[client] Dropping ${resource.resource} response (id: ${resource.correlationId}) — socket is not open`);
+    if (!this.port) {
+      console.warn(`[client] Dropping ${resource.resource} response (id: ${resource.correlationId}) — not connected`);
       return;
     }
-    this.socket.send(JSON.stringify(resource));
+    this.port.postMessage(resource);
   }
 
   public async sendErrorToServer(
     correlationId: string,
     errorMessage: string
   ): Promise<void> {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.warn(`[client] Dropping error response (id: ${correlationId}) — socket is not open. Error was: ${errorMessage}`);
+    if (!this.port) {
+      console.warn(`[client] Dropping error response (id: ${correlationId}) — not connected. Error was: ${errorMessage}`);
       return;
     }
     const extensionError: ExtensionError = {
       correlationId,
       errorMessage,
     };
-    this.socket.send(JSON.stringify(extensionError));
+    this.port.postMessage(extensionError);
   }
 }

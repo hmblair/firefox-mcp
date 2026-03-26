@@ -4,6 +4,7 @@ import {
 } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { BrowserAPI } from "./browser-api";
+import { HTTP_PORT } from "../common";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 dayjs.extend(relativeTime);
@@ -584,30 +585,66 @@ function loadPlugins(mcpServer: McpServer, browserApi: BrowserAPI): void {
 }
 
 export function createServer(options?: { name?: string; version?: string }): FirefoxMcpServer {
-  const mcpServer = new McpServer({
-    name: options?.name ?? "firefox-mcp",
-    version: options?.version ?? process.env.MCP_VERSION ?? "0.0.0",
-  });
+  const serverName = options?.name ?? "firefox-mcp";
+  const serverVersion = options?.version ?? process.env.MCP_VERSION ?? "0.0.0";
 
   const browserApi = new BrowserAPI();
 
-  registerBuiltinTools(mcpServer, browserApi);
-  loadPlugins(mcpServer, browserApi);
+  function createMcpServer(): McpServer {
+    const server = new McpServer({ name: serverName, version: serverVersion });
+    registerBuiltinTools(server, browserApi);
+    loadPlugins(server, browserApi);
+    return server;
+  }
+
+  // Create one instance for the public API (plugins, resources, etc.)
+  const mcpServer = createMcpServer();
 
   const start = async () => {
-    const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
-    const transport = new StdioServerTransport();
-    await mcpServer.connect(transport);
-    console.error("MCP Server running on stdio");
+    const http = await import("http");
+    const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
+
+    const httpServer = http.createServer(async (req, res) => {
+      if (req.url !== "/mcp") {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+
+      // Parse body for POST requests
+      let body: unknown;
+      if (req.method === "POST") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk as Buffer);
+        body = JSON.parse(Buffer.concat(chunks).toString());
+      }
+
+      // Stateless: fresh MCP server + transport per request, sharing the BrowserAPI
+      const server = createMcpServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+
+      await server.connect(transport);
+      await transport.handleRequest(req, res, body);
+
+      res.on("close", () => {
+        transport.close();
+        server.close();
+      });
+    });
+
+    httpServer.listen(HTTP_PORT, "127.0.0.1", () => {
+      console.error(`MCP Server running on http://127.0.0.1:${HTTP_PORT}/mcp`);
+    });
 
     function shutdown(reason: string) {
       console.error(`MCP Server closed (${reason})`);
       browserApi.close();
-      mcpServer.close();
+      httpServer.close();
       process.exit(0);
     }
 
-    process.stdin.on("close", () => shutdown("stdin closed"));
     process.on("SIGTERM", () => shutdown("SIGTERM"));
     process.on("SIGHUP", () => shutdown("SIGHUP"));
   };
